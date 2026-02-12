@@ -1,7 +1,12 @@
 /**
  * SDK Integrations
  * Export all integration modules
+ *
+ * PRIMARY: Pi Agent SDK (@mariozechner/pi-agent-core)
+ * SECONDARY: Claude SDK, Pi-Mono, OpenCode, OpenClaw
  */
+export { PiAgentSDKIntegration } from './pi-agent-sdk';
+export type { PiAgentSDKConfig, AgentTask, AgentTaskResult, } from './pi-agent-sdk';
 export { ClaudeSDKIntegration } from './claude-sdk';
 export type { ClaudeSDKConfig } from './claude-sdk';
 export { PiMonoIntegration } from './pi-mono';
