@@ -13,7 +13,7 @@ export function deepMerge<T extends Record<string, unknown>>(
   base: T,
   override: Partial<T>
 ): T {
-  const result = { ...base }
+  const result = { ...base } as Record<string, unknown>
 
   for (const [key, value] of Object.entries(override)) {
     if (
@@ -27,11 +27,11 @@ export function deepMerge<T extends Record<string, unknown>>(
       result[key] = deepMerge(
         result[key] as Record<string, unknown>,
         value as Record<string, unknown>
-      ) as unknown
+      )
     } else {
-      result[key] = value as unknown
+      result[key] = value
     }
   }
 
-  return result
+  return result as T
 }

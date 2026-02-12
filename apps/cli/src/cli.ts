@@ -16,15 +16,17 @@ program
   .description('Initialize a new Pi Builder project')
   .option('-p, --platforms <platforms>', 'Platforms to include (web,desktop,mobile,cli)')
   .option('-d, --description <desc>', 'Project description')
-  .action(async (name, options) => {
+  .action(async (name: string, options: Record<string, unknown>) => {
     try {
-      const platforms = (options.platforms || 'web,cli').split(',').map((p: string) => p.trim())
+      const platforms = (String(options.platforms) || 'web,cli')
+        .split(',')
+        .map((p: string) => p.trim())
 
       const config = {
         name,
-        description: options.description,
+        description: String(options.description || ''),
         rootDir: process.cwd(),
-        platforms,
+        platforms: platforms as ('web' | 'desktop' | 'mobile' | 'cli')[],
       }
 
       const builder = new Builder(config)
@@ -45,7 +47,7 @@ program
   .description('Generate code using AI')
   .option('-p, --prompt <prompt>', 'Code generation prompt')
   .option('-l, --language <language>', 'Programming language')
-  .action(async options => {
+  .action(async (_options: Record<string, unknown>) => {
     logger.log('Code generation coming soon!')
   })
 
@@ -53,7 +55,7 @@ program
   .command('build')
   .description('Build the project')
   .option('--platform <platform>', 'Build specific platform')
-  .action(options => {
+  .action(_options => {
     logger.log('Build functionality coming soon!')
   })
 

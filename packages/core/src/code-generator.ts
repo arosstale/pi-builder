@@ -24,7 +24,6 @@ export class CodeGenerator {
     const fullPrompt = this.buildPrompt(request)
 
     // Call AI API
-    const startTime = Date.now()
     const response = await this.callAI(fullPrompt)
     const tokensUsed = this.estimateTokens(fullPrompt + response.text)
 
@@ -41,23 +40,23 @@ export class CodeGenerator {
   }
 
   private buildPrompt(request: CodeGenerationRequest): string {
-    let prompt = request.prompt
+    let builtPrompt = request.prompt
 
     if (request.context) {
-      prompt += '\n\nContext:\n'
+      builtPrompt += '\n\nContext:\n'
       for (const [key, value] of Object.entries(request.context)) {
-        prompt += `${key}: ${JSON.stringify(value)}\n`
+        builtPrompt += `${key}: ${JSON.stringify(value)}\n`
       }
     }
 
     if (request.framework) {
-      prompt += `\nFramework: ${request.framework}`
+      builtPrompt += `\nFramework: ${request.framework}`
     }
 
-    return prompt
+    return builtPrompt
   }
 
-  private async callAI(prompt: string): Promise<{ text: string; explanation: string }> {
+  private async callAI(_prompt: string): Promise<{ text: string; explanation: string }> {
     // Mock implementation - replace with actual Claude API call
     return {
       text: '// Generated code will appear here\nconsole.log("Hello, Pi Builder!")',

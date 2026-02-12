@@ -12,8 +12,7 @@
   "dependencies": {
     "@pi-builder/core": "workspace:*",
     "@pi-builder/types": "workspace:*",
-    "@pi-builder/utils": "workspace:*",
-    "electron-squirrel-startup": "^1.1.0"
+    "@pi-builder/utils": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
