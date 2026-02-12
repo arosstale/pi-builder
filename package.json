@@ -1,0 +1,47 @@
+{
+  "name": "pi-builder",
+  "version": "0.1.0",
+  "description": "Multi-platform AI-powered code generation and automation builder. Beautiful, open-source, unrestricted.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "type": "module",
+  "private": false,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:desktop": "npm run dev --workspace=apps/desktop",
+    "dev:cli": "npm run dev --workspace=apps/cli",
+    "build": "npm run build --workspaces --if-present",
+    "build:packages": "npm run build -w @pi-builder/core -w @pi-builder/types -w @pi-builder/utils -w @pi-builder/prompts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist node_modules && npm run clean --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.4.0"
+  },
+  "keywords": [
+    "ai",
+    "automation",
+    "code-generation",
+    "multi-platform",
+    "desktop",
+    "web",
+    "cli",
+    "builder"
+  ]
+}

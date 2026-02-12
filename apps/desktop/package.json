@@ -1,0 +1,24 @@
+{
+  "name": "@pi-builder/desktop",
+  "version": "0.1.0",
+  "description": "Desktop app for Pi Builder (Electron + Tauri)",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron .",
+    "build": "electron-builder"
+  },
+  "dependencies": {
+    "@pi-builder/core": "workspace:*",
+    "@pi-builder/types": "workspace:*",
+    "@pi-builder/utils": "workspace:*",
+    "electron-squirrel-startup": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "electron": "^27.0.0",
+    "electron-builder": "^24.0.0",
+    "typescript": "^5.4.0"
+  }
+}
