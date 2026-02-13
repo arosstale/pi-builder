@@ -1,8 +1,1 @@
-/**
- * Analytics Module
- * Real-time metrics collection and advanced analytics
- * @module analytics
- */
-
-export * from './metrics-collector'
-export * from './analytics-engine'
+export { AdvancedAnalytics, type AgentPerformanceScore, type ToolUsagePattern, type ErrorAnalysis, type CostBreakdown } from './advanced-analytics'
