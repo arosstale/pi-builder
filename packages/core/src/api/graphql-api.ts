@@ -1,184 +1,203 @@
-import { EventEmitter } from 'events'
+import { ApplicationGenerator, ApplicationSpec } from '../generators/application-generator'
+import { StitchCoordinator } from '../coordinators/stitch-coordinator'
 
+// GraphQL Schema representation (not requiring graphql library for MVP)
 export interface GraphQLSchema {
-  query: Record<string, unknown>
-  mutation?: Record<string, unknown>
-  subscription?: Record<string, unknown>
+  typeDefs: string
+  resolvers: Record<string, any>
 }
 
-export interface GraphQLResolver {
-  Query: Record<string, (args: Record<string, unknown>) => unknown>
-  Mutation?: Record<string, (args: Record<string, unknown>) => unknown>
-}
-
-export interface GraphQLRequest {
-  query: string
-  variables?: Record<string, unknown>
-  operationName?: string
-}
-
-export interface GraphQLResponse<T> {
-  data?: T
-  errors?: Array<{
-    message: string
-    locations?: Array<{ line: number; column: number }>
-  }>
-}
-
-export class GraphQLAPI extends EventEmitter {
-  private schema: GraphQLSchema
-  private resolvers: GraphQLResolver
-  private cache: Map<string, unknown>
-
-  constructor(schema: GraphQLSchema, resolvers: GraphQLResolver) {
-    super()
-    this.schema = schema
-    this.resolvers = resolvers
-    this.cache = new Map()
+export const graphqlTypeDefs = `
+  type Query {
+    health: HealthStatus!
+    generateApplication(spec: ApplicationSpecInput!): Application!
+    getModelStats: ModelStats!
+    listAgents: [Agent!]!
+    getAgent(name: String!): Agent
   }
 
-  async query<T>(request: GraphQLRequest): Promise<GraphQLResponse<T>> {
-    try {
-      const cacheKey = this.getCacheKey(request)
-      if (this.cache.has(cacheKey)) {
-        return {
-          data: this.cache.get(cacheKey) as T,
+  type Mutation {
+    generateApplication(spec: ApplicationSpecInput!, priority: String): Application!
+    calculateSavings(taskCount: Int!, priority: String): SavingsResult!
+  }
+
+  type HealthStatus {
+    status: String!
+    timestamp: String!
+  }
+
+  type Application {
+    name: String!
+    version: String!
+    backend: BackendComponent!
+    frontend: FrontendComponent!
+    manifest: ApplicationManifest!
+    timestamp: String!
+  }
+
+  type BackendComponent {
+    code: String!
+    framework: String!
+    language: String!
+  }
+
+  type FrontendComponent {
+    code: String!
+    framework: String!
+    language: String!
+  }
+
+  type ApplicationManifest {
+    name: String!
+    version: String!
+    description: String!
+    generatedAt: String!
+    components: Components!
+    instructions: [String!]!
+    deploymentSteps: [String!]!
+  }
+
+  type Components {
+    backend: String!
+    frontend: String!
+  }
+
+  type ModelStats {
+    models: [ModelConfig!]!
+    timestamp: String!
+  }
+
+  type ModelConfig {
+    name: String!
+    cost: Float!
+    speed: Float!
+    quality: Float!
+    available: Boolean!
+  }
+
+  type SavingsResult {
+    taskCount: Int!
+    priority: String!
+    savings: Float!
+    averageSavingsPerTask: Float!
+  }
+
+  type Agent {
+    name: String!
+    type: String!
+  }
+
+  input ApplicationSpecInput {
+    name: String!
+    description: String!
+    version: String
+    backend: BackendSpecInput!
+    frontend: FrontendSpecInput!
+  }
+
+  input BackendSpecInput {
+    name: String!
+    framework: String!
+    features: [String!]!
+    database: String
+  }
+
+  input FrontendSpecInput {
+    name: String!
+    framework: String!
+    features: [String!]!
+    styling: String
+    components: [String!]
+  }
+`
+
+export class GraphQLAPI {
+  private schema: GraphQLSchema
+  private appGen: ApplicationGenerator
+  private stitch: StitchCoordinator
+
+  constructor() {
+    this.appGen = new ApplicationGenerator()
+    this.stitch = new StitchCoordinator()
+    this.schema = {
+      typeDefs: graphqlTypeDefs,
+      resolvers: {}
+    }
+  }
+
+  public getResolvers() {
+    return {
+      Query: {
+        health: () => ({
+          status: 'healthy',
+          timestamp: new Date().toISOString()
+        }),
+
+        generateApplication: async (args: { spec: ApplicationSpec }) => {
+          const app = await this.appGen.generate(args.spec)
+          return app
+        },
+
+        getModelStats: () => {
+          const stats = this.stitch.getModelStats()
+          return {
+            models: Object.values(stats),
+            timestamp: new Date().toISOString()
+          }
+        },
+
+        listAgents: () => {
+          // TODO: Get from agent registry
+          return []
+        },
+
+        getAgent: (args: { name: string }) => {
+          // TODO: Get from agent registry
+          return null
+        }
+      },
+
+      Mutation: {
+        generateApplication: async (args: {
+          spec: ApplicationSpec
+          priority?: string
+        }) => {
+          const task = {
+            id: `gen-${Date.now()}`,
+            type: 'generate' as const,
+            description: `Generate application: ${args.spec.name}`
+          }
+
+          const selectedModel = this.stitch.selectModel(
+            task,
+            (args.priority || 'quality') as 'cost' | 'speed' | 'quality' | 'balanced'
+          )
+
+          const app = await this.appGen.generate(args.spec)
+          return app
+        },
+
+        calculateSavings: (args: { taskCount: number; priority?: string }) => {
+          const savings = this.stitch.calculateSavings(
+            args.taskCount,
+            (args.priority || 'cost') as 'cost' | 'speed' | 'quality' | 'balanced'
+          )
+
+          return {
+            taskCount: args.taskCount,
+            priority: args.priority || 'cost',
+            savings,
+            averageSavingsPerTask: savings / args.taskCount
+          }
         }
       }
-
-      // Parse query
-      const result = await this.executeQuery(request)
-
-      // Cache result
-      this.cache.set(cacheKey, result)
-      this.emit('query:executed', { request, result })
-
-      return {
-        data: result as T,
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      return {
-        errors: [{ message }],
-      }
     }
   }
 
-  async mutation<T>(request: GraphQLRequest): Promise<GraphQLResponse<T>> {
-    try {
-      // Clear cache for mutations
-      this.cache.clear()
-
-      const result = await this.executeMutation(request)
-      this.emit('mutation:executed', { request, result })
-
-      return {
-        data: result as T,
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      return {
-        errors: [{ message }],
-      }
+  public getSchema(): GraphQLSchema {
+    return {
+      typeDefs: this.schema.typeDefs,
+      resolvers: this.getResolvers()
     }
   }
-
-  private async executeQuery(request: GraphQLRequest): Promise<unknown> {
-    // Parse operation name from query
-    const operationMatch = request.query.match(/query\s+(\w+)/)
-    const operation = operationMatch ? operationMatch[1] : 'default'
-
-    // Get resolver
-    const resolver = this.resolvers.Query[operation]
-    if (!resolver) {
-      throw new Error(`Query '${operation}' not found`)
-    }
-
-    // Execute resolver
-    return resolver(request.variables || {})
-  }
-
-  private async executeMutation(request: GraphQLRequest): Promise<unknown> {
-    // Parse mutation name from query
-    const mutationMatch = request.query.match(/mutation\s+(\w+)/)
-    const mutation = mutationMatch ? mutationMatch[1] : 'default'
-
-    // Get resolver
-    const resolver = this.resolvers.Mutation?.[mutation]
-    if (!resolver) {
-      throw new Error(`Mutation '${mutation}' not found`)
-    }
-
-    // Execute resolver
-    return resolver(request.variables || {})
-  }
-
-  private getCacheKey(request: GraphQLRequest): string {
-    return `${request.query}:${JSON.stringify(request.variables || {})}`
-  }
-
-  clearCache(): void {
-    this.cache.clear()
-    this.emit('cache:cleared')
-  }
-
-  getCacheSize(): number {
-    return this.cache.size
-  }
-}
-
-// Built-in schema and resolvers
-export const defaultSchema: GraphQLSchema = {
-  query: {
-    agents: { type: 'Agent!' },
-    tasks: { type: '[Task!]!' },
-    providers: { type: '[String!]!' },
-    metrics: { type: 'Metrics!' },
-  },
-  mutation: {
-    createAgent: { type: 'Agent!' },
-    createTask: { type: 'Task!' },
-    updateTask: { type: 'Task!' },
-  },
-}
-
-export const defaultResolvers: GraphQLResolver = {
-  Query: {
-    agents: () => [],
-    tasks: () => [],
-    providers: () => [
-      'claude',
-      'openai',
-      'codex',
-      'gemini',
-      'ollama',
-      'lm-studio',
-    ],
-    metrics: () => ({
-      agents: 0,
-      tasks: 0,
-      uptime: 0,
-    }),
-  },
-  Mutation: {
-    createAgent: (args) => ({
-      id: `agent-${Date.now()}`,
-      name: args.name,
-      type: 'custom',
-      status: 'active',
-      capabilities: [],
-    }),
-    createTask: (args) => ({
-      id: `task-${Date.now()}`,
-      name: args.name,
-      status: 'pending',
-      priority: args.priority || 'medium',
-      createdAt: new Date(),
-    }),
-    updateTask: (args) => ({
-      id: args.id,
-      status: args.status,
-      completedAt: new Date(),
-    }),
-  },
 }

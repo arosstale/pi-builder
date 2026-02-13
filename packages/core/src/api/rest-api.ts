@@ -1,95 +1,61 @@
 import express, { Express, Request, Response, NextFunction } from 'express'
-import { EventEmitter } from 'events'
+import { ApplicationGenerator, ApplicationSpec } from '../generators/application-generator'
+import { StitchCoordinator } from '../coordinators/stitch-coordinator'
+import { agentRegistry } from '../agents/agent-registry'
 
-export interface ApiConfig {
+export interface APIConfig {
   port: number
   host: string
-  cors: boolean
-  compression: boolean
-  rateLimit: {
-    windowMs: number
-    maxRequests: number
-  }
+  environment: 'development' | 'production' | 'test'
 }
 
-export interface Agent {
-  id: string
-  name: string
-  type: 'provider' | 'custom'
-  status: 'active' | 'inactive'
-  capabilities: string[]
+export interface GenerateRequest {
+  spec: ApplicationSpec
+  priority?: 'cost' | 'speed' | 'quality' | 'balanced'
 }
 
-export interface Task {
-  id: string
-  name: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
-  priority: 'low' | 'medium' | 'high'
-  createdAt: Date
-  completedAt?: Date
-}
-
-export interface ApiResponse<T> {
+export interface APIResponse<T> {
   success: boolean
   data?: T
   error?: string
-  timestamp: Date
+  timestamp: string
 }
 
-export class RestAPI extends EventEmitter {
+export class RestAPI {
   private app: Express
-  private config: ApiConfig
-  private agents: Map<string, Agent>
-  private tasks: Map<string, Task>
+  private appGen: ApplicationGenerator
+  private stitch: StitchCoordinator
+  private config: APIConfig
 
-  constructor(config: ApiConfig) {
-    super()
+  constructor(config: APIConfig) {
     this.config = config
     this.app = express()
-    this.agents = new Map()
-    this.tasks = new Map()
+    this.appGen = new ApplicationGenerator()
+    this.stitch = new StitchCoordinator()
+
     this.setupMiddleware()
     this.setupRoutes()
   }
 
   private setupMiddleware(): void {
-    // JSON parser
-    this.app.use(express.json())
-    this.app.use(express.urlencoded({ extended: true }))
-
-    // CORS
-    if (this.config.cors) {
-      this.app.use((req: Request, res: Response, next: NextFunction) => {
-        res.header('Access-Control-Allow-Origin', '*')
-        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-        next()
-      })
-    }
+    // Body parser
+    this.app.use(express.json({ limit: '10mb' }))
+    this.app.use(express.urlencoded({ limit: '10mb', extended: true }))
 
     // Request logging
     this.app.use((req: Request, res: Response, next: NextFunction) => {
-      const start = Date.now()
-      res.on('finish', () => {
-        const duration = Date.now() - start
-        this.emit('request', {
-          method: req.method,
-          path: req.path,
-          status: res.statusCode,
-          duration,
-        })
-      })
+      console.log(`${new Date().toISOString()} ${req.method} ${req.path}`)
       next()
     })
 
-    // Error handling
-    this.app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+    // Error handler
+    this.app.use((err: any, req: Request, res: Response, next: NextFunction) => {
       console.error('API Error:', err.message)
       res.status(500).json({
         success: false,
         error: err.message,
-        timestamp: new Date(),
-      } as ApiResponse<null>)
+        timestamp: new Date().toISOString()
+      })
     })
   }
 
@@ -98,186 +64,137 @@ export class RestAPI extends EventEmitter {
     this.app.get('/health', (req: Request, res: Response) => {
       res.json({
         success: true,
-        data: {
-          status: 'healthy',
-          uptime: process.uptime(),
-          agents: this.agents.size,
-          tasks: this.tasks.size,
-        },
-        timestamp: new Date(),
-      } as ApiResponse<Record<string, unknown>>)
-    })
-
-    // Agents endpoints
-    this.app.get('/api/agents', (req: Request, res: Response) => {
-      const agents = Array.from(this.agents.values())
-      res.json({
-        success: true,
-        data: agents,
-        timestamp: new Date(),
-      } as ApiResponse<Agent[]>)
-    })
-
-    this.app.post('/api/agents', (req: Request, res: Response) => {
-      const agent: Agent = {
-        id: `agent-${Date.now()}`,
-        name: req.body.name,
-        type: req.body.type || 'custom',
-        status: 'active',
-        capabilities: req.body.capabilities || [],
-      }
-      this.agents.set(agent.id, agent)
-      this.emit('agent:created', agent)
-      res.status(201).json({
-        success: true,
-        data: agent,
-        timestamp: new Date(),
-      } as ApiResponse<Agent>)
-    })
-
-    this.app.get('/api/agents/:id', (req: Request, res: Response) => {
-      const agent = this.agents.get(req.params.id)
-      if (!agent) {
-        return res.status(404).json({
-          success: false,
-          error: 'Agent not found',
-          timestamp: new Date(),
-        } as ApiResponse<null>)
-      }
-      res.json({
-        success: true,
-        data: agent,
-        timestamp: new Date(),
-      } as ApiResponse<Agent>)
-    })
-
-    // Tasks endpoints
-    this.app.get('/api/tasks', (req: Request, res: Response) => {
-      const tasks = Array.from(this.tasks.values())
-      const filtered = tasks.filter((t) => {
-        if (req.query.status && t.status !== req.query.status) return false
-        if (req.query.priority && t.priority !== req.query.priority) return false
-        return true
+        data: { status: 'healthy', timestamp: new Date().toISOString() },
+        timestamp: new Date().toISOString()
       })
-      res.json({
-        success: true,
-        data: filtered,
-        timestamp: new Date(),
-      } as ApiResponse<Task[]>)
     })
 
-    this.app.post('/api/tasks', (req: Request, res: Response) => {
-      const task: Task = {
-        id: `task-${Date.now()}`,
-        name: req.body.name,
-        status: 'pending',
-        priority: req.body.priority || 'medium',
-        createdAt: new Date(),
-      }
-      this.tasks.set(task.id, task)
-      this.emit('task:created', task)
-      res.status(201).json({
-        success: true,
-        data: task,
-        timestamp: new Date(),
-      } as ApiResponse<Task>)
-    })
+    // Generate application
+    this.app.post('/api/v1/generate', async (req: Request, res: Response) => {
+      try {
+        const { spec, priority = 'quality' } = req.body as GenerateRequest
 
-    this.app.get('/api/tasks/:id', (req: Request, res: Response) => {
-      const task = this.tasks.get(req.params.id)
-      if (!task) {
-        return res.status(404).json({
-          success: false,
-          error: 'Task not found',
-          timestamp: new Date(),
-        } as ApiResponse<null>)
-      }
-      res.json({
-        success: true,
-        data: task,
-        timestamp: new Date(),
-      } as ApiResponse<Task>)
-    })
-
-    this.app.put('/api/tasks/:id', (req: Request, res: Response) => {
-      const task = this.tasks.get(req.params.id)
-      if (!task) {
-        return res.status(404).json({
-          success: false,
-          error: 'Task not found',
-          timestamp: new Date(),
-        } as ApiResponse<null>)
-      }
-      if (req.body.status) {
-        task.status = req.body.status
-        if (req.body.status === 'completed') {
-          task.completedAt = new Date()
+        // Validate spec
+        if (!spec || !spec.name) {
+          return res.status(400).json({
+            success: false,
+            error: 'Missing required field: spec.name',
+            timestamp: new Date().toISOString()
+          })
         }
+
+        // Select model via Stitch
+        const task = {
+          id: `gen-${Date.now()}`,
+          type: 'generate' as const,
+          description: `Generate application: ${spec.name}`
+        }
+        const selectedModel = this.stitch.selectModel(task, priority)
+
+        // Generate application
+        const app = await this.appGen.generate(spec)
+
+        res.json({
+          success: true,
+          data: {
+            ...app,
+            metadata: { model: selectedModel, priority }
+          },
+          timestamp: new Date().toISOString()
+        })
+      } catch (error) {
+        const err = error as Error
+        res.status(500).json({
+          success: false,
+          error: err.message,
+          timestamp: new Date().toISOString()
+        })
       }
-      if (req.body.priority) task.priority = req.body.priority
-      this.emit('task:updated', task)
-      res.json({
-        success: true,
-        data: task,
-        timestamp: new Date(),
-      } as ApiResponse<Task>)
     })
 
-    // Providers endpoints
-    this.app.get('/api/providers', (req: Request, res: Response) => {
+    // Get model stats
+    this.app.get('/api/v1/models/stats', (req: Request, res: Response) => {
+      const stats = this.stitch.getModelStats()
       res.json({
         success: true,
-        data: {
-          providers: [
-            'claude',
-            'openai',
-            'codex',
-            'gemini',
-            'ollama',
-            'lm-studio',
-            'opencode',
-            'openclaw',
-          ],
-          total: 8,
-        },
-        timestamp: new Date(),
-      } as ApiResponse<Record<string, unknown>>)
-    })
-
-    // Metrics endpoints
-    this.app.get('/api/metrics', (req: Request, res: Response) => {
-      res.json({
-        success: true,
-        data: {
-          agents: this.agents.size,
-          tasks: this.tasks.size,
-          completedTasks: Array.from(this.tasks.values()).filter(
-            (t) => t.status === 'completed'
-          ).length,
-          failedTasks: Array.from(this.tasks.values()).filter(
-            (t) => t.status === 'failed'
-          ).length,
-          uptime: process.uptime(),
-        },
-        timestamp: new Date(),
-      } as ApiResponse<Record<string, unknown>>)
-    })
-  }
-
-  async start(): Promise<void> {
-    return new Promise((resolve) => {
-      this.app.listen(this.config.port, this.config.host, () => {
-        console.log(`✅ REST API listening on ${this.config.host}:${this.config.port}`)
-        this.emit('started')
-        resolve()
+        data: stats,
+        timestamp: new Date().toISOString()
       })
     })
+
+    // Calculate savings
+    this.app.post('/api/v1/models/savings', (req: Request, res: Response) => {
+      try {
+        const { taskCount = 100, priority = 'cost' } = req.body
+
+        const savings = this.stitch.calculateSavings(
+          taskCount,
+          priority as 'cost' | 'speed' | 'quality' | 'balanced'
+        )
+
+        res.json({
+          success: true,
+          data: {
+            taskCount,
+            priority,
+            savings,
+            averageSavingsPerTask: savings / taskCount
+          },
+          timestamp: new Date().toISOString()
+        })
+      } catch (error) {
+        const err = error as Error
+        res.status(500).json({
+          success: false,
+          error: err.message,
+          timestamp: new Date().toISOString()
+        })
+      }
+    })
+
+    // List agents
+    this.app.get('/api/v1/agents', (req: Request, res: Response) => {
+      const agents = agentRegistry.listAgents()
+      res.json({
+        success: true,
+        data: { agents, count: agents.length },
+        timestamp: new Date().toISOString()
+      })
+    })
+
+    // Get agent info
+    this.app.get('/api/v1/agents/:name', (req: Request, res: Response) => {
+      try {
+        const agent = agentRegistry.getAgent(req.params.name)
+        res.json({
+          success: true,
+          data: {
+            name: req.params.name,
+            type: agent.constructor.name
+          },
+          timestamp: new Date().toISOString()
+        })
+      } catch (error) {
+        const err = error as Error
+        res.status(404).json({
+          success: false,
+          error: err.message,
+          timestamp: new Date().toISOString()
+        })
+      }
+    })
   }
 
-  async stop(): Promise<void> {
-    return new Promise((resolve) => {
-      this.emit('stopped')
-      resolve()
+  public start(): void {
+    this.app.listen(this.config.port, this.config.host, () => {
+      console.log(
+        `🚀 REST API running on http://${this.config.host}:${this.config.port}`
+      )
+      console.log(`Environment: ${this.config.environment}`)
     })
+  }
+
+  public getApp(): Express {
+    return this.app
   }
 }
