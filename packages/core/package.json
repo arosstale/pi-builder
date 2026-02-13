@@ -18,7 +18,9 @@
   },
   "dependencies": {
     "@pi-builder/types": "workspace:*",
-    "@pi-builder/utils": "workspace:*"
+    "@pi-builder/utils": "workspace:*",
+    "express": "^4.21.0",
+    "node-fetch": "^3.0.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

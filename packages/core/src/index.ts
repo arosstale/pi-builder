@@ -2,6 +2,7 @@
  * @pi-builder/core
  * Core engine for Pi Builder
  * PRIMARY: Pi Agent SDK (@mariozechner/pi-agent-core)
+ * PHASE 5: Agent Orchestration System
  */
 
 export { Builder } from './builder'
@@ -34,3 +35,30 @@ export type {
   ScrapingTask,
   ScrapingResult,
 } from './integrations'
+
+// PHASE 5: Agent Orchestration System
+export {
+  BaseAgent,
+  AgentOrchestrator,
+  AgentMemory,
+  ProviderAdapter,
+  createProviderAdapter,
+  createProviderAdapters,
+} from './agents'
+export type {
+  IAgent,
+  Task,
+  TaskResult,
+  AgentHealth,
+  AgentCapability,
+  AgentConfig,
+  AgentType,
+  RoutingStrategy,
+  RoutingDecision,
+  OrchestratorConfig,
+  MemoryEntry,
+  Pattern,
+  Optimization,
+  AggregatedResult,
+  AgentExecutionEvent,
+} from './agents'
