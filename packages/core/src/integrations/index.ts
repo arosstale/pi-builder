@@ -26,3 +26,13 @@ export type { OpenCodeConfig } from './opencode-sdk'
 
 export { OpenClawIntegration } from './openclaw'
 export type { OpenClawConfig, ScrapingTask, ScrapingResult } from './openclaw'
+
+// LOCAL LLM PROVIDERS
+export { CodexAgent, CodexProvider } from './codex-provider'
+export type { CodexConfig, CodeCompletionRequest, CodeCompletionResponse } from './codex-provider'
+
+export { OllamaAgent, OllamaProvider } from './ollama-provider'
+export type { OllamaConfig, OllamaGenerationRequest, OllamaGenerationResponse } from './ollama-provider'
+
+export { LMStudioAgent, LMStudioProvider } from './lm-studio-provider'
+export type { LMStudioConfig, LMStudioCompletionRequest, LMStudioCompletionResponse } from './lm-studio-provider'
