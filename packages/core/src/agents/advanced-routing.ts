@@ -350,7 +350,7 @@ export class MLRoutingStrategy {
   /**
    * Calculate agent score based on health and task
    */
-  private calculateScore(health: Awaited<ReturnType<IAgent['getHealth']>>, task: Task): number {
+  private calculateScore(health: Awaited<ReturnType<IAgent['getHealth']>>, _task: Task): number {
     // Weights for different metrics
     const successWeight = 0.4
     const latencyWeight = 0.3

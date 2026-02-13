@@ -399,9 +399,10 @@ export class AgentMemory {
   private getFirstObservedForTaskType(taskType: string): Date {
     const entries = this.query({ task: { type: taskType } as any })
     if (entries.length === 0) return new Date()
-    return entries.reduce((earliest, e) =>
-      e.timestamp < earliest ? e.timestamp : earliest
-    ).timestamp
+    const earliest = entries.reduce((minDate, e) =>
+      e.timestamp < minDate ? e.timestamp : minDate
+    )
+    return earliest
   }
 
   private identifyCostOutliers(): Array<{
