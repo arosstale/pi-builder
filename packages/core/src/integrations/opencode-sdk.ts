@@ -1,108 +1,219 @@
-/**
- * OpenCode SDK Integration
- * Integrates with OpenCode SDK for code analysis and generation
- */
+import { EventEmitter } from 'events'
 
-import type { CodeGenerationRequest, CodeGenerationResponse } from '../types'
-
-export interface OpenCodeConfig {
-  apiKey?: string
-  baseUrl?: string
-  timeout?: number
+export interface OpenCodeRequest {
+  language: string
+  prompt: string
+  context?: string
+  temperature?: number
+  maxTokens?: number
 }
 
-export class OpenCodeSDKIntegration {
+export interface GeneratedCode {
+  id: string
+  language: string
+  code: string
+  explanation: string
+  tokens: {
+    input: number
+    output: number
+  }
+  quality: {
+    score: number
+    issues: string[]
+  }
+}
+
+export interface CodeAnalysis {
+  language: string
+  complexity: number
+  issues: Issue[]
+  suggestions: string[]
+}
+
+export interface Issue {
+  type: 'error' | 'warning' | 'info'
+  message: string
+  line?: number
+  severity: 'low' | 'medium' | 'high'
+}
+
+export class OpenCodeSDK extends EventEmitter {
+  private apiKey: string
   private baseUrl: string
+  private cache: Map<string, GeneratedCode>
 
-  constructor(config?: OpenCodeConfig) {
-    this.baseUrl = config?.baseUrl || 'https://api.opencode.dev'
-    if (config?.apiKey) {
-      // API key acknowledged but not used in mock
-      void config.apiKey
-    }
-    void config?.timeout
+  constructor(apiKey: string, baseUrl = 'https://api.opencode.io') {
+    super()
+    this.apiKey = apiKey
+    this.baseUrl = baseUrl
+    this.cache = new Map()
   }
 
-  async analyzeCode(code: string): Promise<{ issues: string[]; score: number }> {
+  async generateCode(request: OpenCodeRequest): Promise<GeneratedCode> {
     try {
-      console.log('🔍 Analyzing code with OpenCode SDK...')
+      this.emit('generation:start', {
+        language: request.language,
+        prompt: request.prompt,
+      })
 
-      // Mock analysis
-      const issues: string[] = []
-      let score = 100
-
-      // Check for common issues
-      if (code.includes('var ')) {
-        issues.push('Use const/let instead of var')
-        score -= 10
+      // Create cache key
+      const cacheKey = `${request.language}:${request.prompt}`
+      if (this.cache.has(cacheKey)) {
+        return this.cache.get(cacheKey)!
       }
 
-      if (!code.includes('//') && !code.includes('/*')) {
-        issues.push('Consider adding comments')
-        score -= 5
+      const response = await fetch(`${this.baseUrl}/v1/code/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          language: request.language,
+          prompt: request.prompt,
+          context: request.context,
+          temperature: request.temperature || 0.7,
+          max_tokens: request.maxTokens || 4096,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`OpenCode API error: ${response.statusText}`)
       }
 
-      if (code.length > 5000) {
-        issues.push('Function is too long, consider breaking it up')
-        score -= 15
-      }
+      const data = (await response.json()) as Record<string, unknown>
 
-      console.log(`✅ Code analysis complete. Score: ${score}/100`)
-
-      return { issues, score }
-    } catch (error) {
-      console.error(
-        `❌ Code analysis failed: ${error instanceof Error ? error.message : String(error)}`
-      )
-      throw error
-    }
-  }
-
-  async generateWithOpenCode(request: CodeGenerationRequest): Promise<CodeGenerationResponse> {
-    try {
-      console.log('🔨 Generating code with OpenCode SDK...')
-
-      const code = await this.callOpenCodeAPI(request)
-
-      return {
-        code,
-        language: request.language || 'typescript',
-        explanation: 'Generated using OpenCode SDK',
-        metadata: {
-          tokensUsed: Math.ceil(code.length / 4),
-          generatedAt: new Date(),
-          model: 'opencode-v1',
+      const result: GeneratedCode = {
+        id: (data.id as string) || `opencode-${Date.now()}`,
+        language: request.language,
+        code: (data.code as string) || '',
+        explanation: (data.explanation as string) || '',
+        tokens: {
+          input: ((data.tokens as Record<string, number>).input as number) || 0,
+          output: ((data.tokens as Record<string, number>).output as number) || 0,
+        },
+        quality: {
+          score: ((data.quality as Record<string, number>).score as number) || 0.8,
+          issues: ((data.quality as Record<string, unknown>).issues as string[]) || [],
         },
       }
+
+      this.cache.set(cacheKey, result)
+      this.emit('generation:complete', result)
+
+      return result
     } catch (error) {
-      console.error(
-        `❌ Code generation failed: ${error instanceof Error ? error.message : String(error)}`
-      )
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      this.emit('generation:error', { error: errorMessage })
       throw error
     }
   }
 
-  private async callOpenCodeAPI(request: CodeGenerationRequest): Promise<string> {
-    // Mock implementation
-    return `// Generated by OpenCode SDK via ${this.baseUrl}
-// Prompt: ${request.prompt}
-// Language: ${request.language || 'typescript'}
-// Framework: ${request.framework || 'none'}
-
-export function generated() {
-  console.log('Code generated by OpenCode SDK');
-}`
-  }
-
-  async formatCode(code: string, language: string): Promise<string> {
+  async analyzeCode(code: string, language: string): Promise<CodeAnalysis> {
     try {
-      console.log(`📐 Formatting ${language} code...`)
+      this.emit('analysis:start', { language })
 
-      // Mock formatting - just return code for now
-      return code
+      const response = await fetch(`${this.baseUrl}/v1/code/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          code,
+          language,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`OpenCode API error: ${response.statusText}`)
+      }
+
+      const data = (await response.json()) as Record<string, unknown>
+
+      const result: CodeAnalysis = {
+        language,
+        complexity: ((data.complexity as number) || 0) as number,
+        issues: ((data.issues as Issue[]) || []) as Issue[],
+        suggestions: ((data.suggestions as string[]) || []) as string[],
+      }
+
+      this.emit('analysis:complete', result)
+
+      return result
     } catch (error) {
-      console.error(`❌ Formatting failed: ${error instanceof Error ? error.message : String(error)}`)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      this.emit('analysis:error', { error: errorMessage })
       throw error
     }
+  }
+
+  async refactorCode(code: string, language: string): Promise<GeneratedCode> {
+    try {
+      this.emit('refactor:start', { language })
+
+      const response = await fetch(`${this.baseUrl}/v1/code/refactor`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          code,
+          language,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`OpenCode API error: ${response.statusText}`)
+      }
+
+      const data = (await response.json()) as Record<string, unknown>
+
+      const result: GeneratedCode = {
+        id: (data.id as string) || `opencode-refactor-${Date.now()}`,
+        language,
+        code: (data.code as string) || code,
+        explanation: (data.explanation as string) || 'Refactored code',
+        tokens: {
+          input: ((data.tokens as Record<string, number>).input as number) || 0,
+          output: ((data.tokens as Record<string, number>).output as number) || 0,
+        },
+        quality: {
+          score: ((data.quality as Record<string, number>).score as number) || 0.9,
+          issues: [],
+        },
+      }
+
+      this.emit('refactor:complete', result)
+
+      return result
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      this.emit('refactor:error', { error: errorMessage })
+      throw error
+    }
+  }
+
+  async health(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/health`, {
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+      })
+      return response.ok
+    } catch {
+      return false
+    }
+  }
+
+  clearCache(): void {
+    this.cache.clear()
+    this.emit('cache:cleared')
+  }
+
+  getCacheSize(): number {
+    return this.cache.size
   }
 }

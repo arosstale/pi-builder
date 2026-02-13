@@ -36,3 +36,16 @@ export type { OllamaConfig, OllamaGenerationRequest, OllamaGenerationResponse } 
 
 export { LMStudioAgent, LMStudioProvider } from './lm-studio-provider'
 export type { LMStudioConfig, LMStudioCompletionRequest, LMStudioCompletionResponse } from './lm-studio-provider'
+
+// NEW PROVIDERS (V2.0)
+export { OpenClawProvider } from './openclaw-provider'
+export type { OpenClawRequest, OpenClawResponse, Tool } from './openclaw-provider'
+
+export { PiMonoProvider } from './pi-mono-provider'
+export type { PiMonoTask, PiMonoResult, PiMonoConfig } from './pi-mono-provider'
+
+export { OpenHandsProvider } from './openhands-provider'
+export type { OpenHandsAction, OpenHandsState, OpenHandsTask } from './openhands-provider'
+
+export { OpenCodeSDK } from './opencode-sdk'
+export type { OpenCodeRequest, GeneratedCode, CodeAnalysis, Issue } from './opencode-sdk'
