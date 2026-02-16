@@ -49,3 +49,7 @@ export type { OpenHandsAction, OpenHandsState, OpenHandsTask } from './openhands
 
 export { OpenCodeSDK } from './opencode-sdk'
 export type { OpenCodeRequest, GeneratedCode, CodeAnalysis, Issue } from './opencode-sdk'
+
+// Phase 12: Multi-Channel Router
+export { MultiChannelRouter, TelegramProvider, SlackProvider, EmailProvider, WhatsAppProvider, SMSProvider, PhoneProvider } from './multi-channel-router'
+export type { Channel, ChannelMessage, ChannelResponse, IChannelProvider } from './multi-channel-router'

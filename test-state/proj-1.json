@@ -1,0 +1,27 @@
+{
+  "projectId": "proj-1",
+  "projectName": "Test Project",
+  "version": 2,
+  "updated": "2026-02-13T13:56:20.206Z",
+  "tasks": [
+    {
+      "id": "task-1",
+      "status": "pending",
+      "priority": "high"
+    },
+    {
+      "id": "task-2",
+      "status": "pending",
+      "priority": "normal"
+    }
+  ],
+  "nextActions": [],
+  "blockers": [],
+  "metrics": {
+    "totalTasks": 2,
+    "completedTasks": 0,
+    "blockedTasks": 0,
+    "completionPercentage": 0,
+    "burndownRate": 0
+  }
+}

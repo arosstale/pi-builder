@@ -1,0 +1,31 @@
+{
+  "projectId": "proj-6",
+  "projectName": "Project 6",
+  "version": 2,
+  "updated": "2026-02-13T13:56:20.232Z",
+  "tasks": [
+    {
+      "id": "task-1",
+      "status": "pending",
+      "assignee": "agent-1"
+    },
+    {
+      "id": "task-2",
+      "status": "pending",
+      "assignee": "agent-2"
+    },
+    {
+      "id": "task-3",
+      "status": "done"
+    }
+  ],
+  "nextActions": [],
+  "blockers": [],
+  "metrics": {
+    "totalTasks": 3,
+    "completedTasks": 1,
+    "blockedTasks": 0,
+    "completionPercentage": 33.33333333333333,
+    "burndownRate": 0.3333333333333333
+  }
+}

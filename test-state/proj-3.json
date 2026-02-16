@@ -1,0 +1,22 @@
+{
+  "projectId": "proj-3",
+  "projectName": "Project 3",
+  "version": 3,
+  "updated": "2026-02-13T13:56:20.219Z",
+  "tasks": [
+    {
+      "id": "task-1",
+      "status": "in_progress",
+      "startedAt": "2026-02-13T13:56:20.219Z"
+    }
+  ],
+  "nextActions": [],
+  "blockers": [],
+  "metrics": {
+    "totalTasks": 1,
+    "completedTasks": 0,
+    "blockedTasks": 0,
+    "completionPercentage": 0,
+    "burndownRate": 0
+  }
+}

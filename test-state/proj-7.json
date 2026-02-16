@@ -1,0 +1,29 @@
+{
+  "projectId": "proj-7",
+  "projectName": "Project 7",
+  "version": 2,
+  "updated": "2026-02-13T13:56:20.254Z",
+  "tasks": [
+    {
+      "id": "task-1",
+      "status": "done"
+    },
+    {
+      "id": "task-2",
+      "status": "in_progress"
+    },
+    {
+      "id": "task-3",
+      "status": "pending"
+    }
+  ],
+  "nextActions": [],
+  "blockers": [],
+  "metrics": {
+    "totalTasks": 3,
+    "completedTasks": 1,
+    "blockedTasks": 0,
+    "completionPercentage": 33.33333333333333,
+    "burndownRate": 0.3333333333333333
+  }
+}
