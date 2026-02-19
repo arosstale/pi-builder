@@ -1,15 +1,17 @@
 /**
  * Pi Builder Desktop — Electron main process
  *
- * Starts the pi-builder WebSocket gateway on a free port,
- * then opens a BrowserWindow loading the web UI served from that gateway.
+ * Spawns the pi-builder gateway (bun) as a child process on a free port,
+ * then opens a BrowserWindow at http://127.0.0.1:{port}/.
  *
- * When the window closes the gateway is stopped cleanly.
+ * Using a subprocess avoids the CJS/ESM mismatch: Electron's main process
+ * is CommonJS, but @pi-builder/core is pure ESM. bun handles it natively.
  */
 
 import { app, BrowserWindow, shell, Menu, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { createServer } from 'node:net'
+import { spawn, ChildProcess } from 'node:child_process'
 
 // --------------------------------------------------------------------------
 // Find a free TCP port
@@ -23,7 +25,6 @@ function findFreePort(preferred = 18900): Promise<number> {
       srv.close(() => resolve(addr.port))
     })
     srv.on('error', () => {
-      // preferred port busy — let OS assign one
       const fallback = createServer()
       fallback.listen(0, '127.0.0.1', () => {
         const addr = fallback.address() as { port: number }
@@ -39,7 +40,71 @@ function findFreePort(preferred = 18900): Promise<number> {
 // --------------------------------------------------------------------------
 
 let mainWindow: BrowserWindow | null = null
-let gateway: { stop(): Promise<void>; url: string } | null = null
+let gatewayProc: ChildProcess | null = null
+let gatewayPort = 18900
+
+// --------------------------------------------------------------------------
+// Start gateway subprocess
+// --------------------------------------------------------------------------
+
+function startGatewayProcess(port: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // Find the repo root (apps/desktop/dist/main.js → ../../..)
+    const repoRoot = join(__dirname, '..', '..', '..')
+    const cliEntry = join(repoRoot, 'apps', 'cli', 'src', 'cli.ts')
+    const dbPath = join(app.getPath('userData'), 'pi-builder.db')
+
+    // bun handles ESM workspace packages natively.
+    // Electron strips PATH so we resolve bun's absolute path explicitly.
+    const bunBin = process.platform === 'win32'
+      ? join(process.env.USERPROFILE ?? 'C:\\Users\\Default', '.bun', 'bin', 'bun.exe')
+      : join(process.env.HOME ?? '/home/user', '.bun', 'bin', 'bun')
+    gatewayProc = spawn(bunBin, ['run', cliEntry, 'start', '--port', String(port), '--db', dbPath], {
+      cwd: repoRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    let resolved = false
+
+    gatewayProc.stdout?.on('data', (chunk: Buffer) => {
+      const line = chunk.toString()
+      console.log('[gateway]', line.trim())
+      // Gateway prints "🚀 Pi Builder Gateway listening" when ready
+      if (!resolved && line.includes('Gateway listening')) {
+        resolved = true
+        resolve()
+      }
+    })
+
+    gatewayProc.stderr?.on('data', (chunk: Buffer) => {
+      console.error('[gateway stderr]', chunk.toString().trim())
+    })
+
+    gatewayProc.on('error', (err) => {
+      if (!resolved) { resolved = true; reject(err) }
+    })
+
+    gatewayProc.on('exit', (code) => {
+      console.log('[gateway] exited with code', code)
+      if (!resolved) { resolved = true; reject(new Error(`Gateway exited early: ${code}`)) }
+    })
+
+    // Timeout after 15s
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true
+        reject(new Error('Gateway startup timeout'))
+      }
+    }, 15_000)
+  })
+}
+
+function stopGateway(): void {
+  if (gatewayProc) {
+    try { gatewayProc.kill('SIGTERM') } catch { /* ignore */ }
+    gatewayProc = null
+  }
+}
 
 // --------------------------------------------------------------------------
 // Main window
@@ -59,27 +124,22 @@ async function createWindow(port: number): Promise<BrowserWindow> {
       nodeIntegration: false,
       sandbox: true,
     },
-    // Platform-specific chrome
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 16 },
   })
 
-  // Open external links in the user's default browser, not in Electron
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http')) shell.openExternal(url)
     return { action: 'deny' }
   })
 
-  // Load the web UI served by the gateway
   await win.loadURL(`http://127.0.0.1:${port}/`)
-
   win.on('closed', () => { mainWindow = null })
-
   return win
 }
 
 // --------------------------------------------------------------------------
-// App menu (minimal)
+// App menu
 // --------------------------------------------------------------------------
 
 function buildMenu(): void {
@@ -98,25 +158,19 @@ function buildMenu(): void {
     {
       label: 'Edit',
       submenu: [
-        { role: 'undo' as const },
-        { role: 'redo' as const },
+        { role: 'undo' as const }, { role: 'redo' as const },
         { type: 'separator' as const },
-        { role: 'cut' as const },
-        { role: 'copy' as const },
-        { role: 'paste' as const },
-        { role: 'selectAll' as const },
+        { role: 'cut' as const }, { role: 'copy' as const },
+        { role: 'paste' as const }, { role: 'selectAll' as const },
       ],
     },
     {
       label: 'View',
       submenu: [
-        { role: 'reload' as const },
-        { role: 'forceReload' as const },
+        { role: 'reload' as const }, { role: 'forceReload' as const },
         { role: 'toggleDevTools' as const },
         { type: 'separator' as const },
-        { role: 'resetZoom' as const },
-        { role: 'zoomIn' as const },
-        { role: 'zoomOut' as const },
+        { role: 'resetZoom' as const }, { role: 'zoomIn' as const }, { role: 'zoomOut' as const },
         { type: 'separator' as const },
         { role: 'togglefullscreen' as const },
       ],
@@ -124,27 +178,23 @@ function buildMenu(): void {
     {
       label: 'Window',
       submenu: [
-        { role: 'minimize' as const },
-        { role: 'zoom' as const },
-        ...(process.platform === 'darwin' ? [
-          { type: 'separator' as const },
-          { role: 'front' as const },
-        ] : [
-          { role: 'close' as const },
-        ]),
+        { role: 'minimize' as const }, { role: 'zoom' as const },
+        ...(process.platform === 'darwin'
+          ? [{ type: 'separator' as const }, { role: 'front' as const }]
+          : [{ role: 'close' as const }]),
       ],
     },
   ]
-
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
 // --------------------------------------------------------------------------
-// IPC — expose gateway info to renderer
+// IPC
 // --------------------------------------------------------------------------
 
 ipcMain.handle('gateway:info', () => ({
-  url: gateway?.url ?? null,
+  url: `ws://127.0.0.1:${gatewayPort}`,
+  port: gatewayPort,
 }))
 
 // --------------------------------------------------------------------------
@@ -154,47 +204,30 @@ ipcMain.handle('gateway:info', () => ({
 app.whenReady().then(async () => {
   buildMenu()
 
-  // Import gateway dynamically (CJS-compatible path from dist)
-  const port = await findFreePort(18900)
+  gatewayPort = await findFreePort(18900)
 
   try {
-    // Try to import the compiled core package
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { startGateway } = require('@pi-builder/core')
-    gateway = await startGateway({
-      port,
-      host: '127.0.0.1',
-      orchestrator: {
-        workDir: process.cwd(),
-        dbPath: join(app.getPath('userData'), 'pi-builder.db'),
-      },
-    })
-    console.log(`✅ Gateway started: ${gateway!.url}`)
+    await startGatewayProcess(gatewayPort)
+    console.log(`✅ Gateway ready on port ${gatewayPort}`)
   } catch (err) {
     console.error('Gateway failed to start:', err)
-    // Still open the window — it will show a "not connected" state
+    // Still open window — will show disconnected state, user can reconnect
   }
 
-  mainWindow = await createWindow(port)
+  mainWindow = await createWindow(gatewayPort)
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      mainWindow = await createWindow(port)
+      mainWindow = await createWindow(gatewayPort)
     }
   })
 })
 
-app.on('window-all-closed', async () => {
-  if (gateway) {
-    try { await gateway.stop() } catch { /* ignore */ }
-    gateway = null
-  }
+app.on('window-all-closed', () => {
+  stopGateway()
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', async () => {
-  if (gateway) {
-    try { await gateway.stop() } catch { /* ignore */ }
-    gateway = null
-  }
+app.on('before-quit', () => {
+  stopGateway()
 })
