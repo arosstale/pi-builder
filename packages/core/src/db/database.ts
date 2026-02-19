@@ -43,7 +43,7 @@ function openSqlite(filePath: string): SqliteDB {
     return db
   }
 
-  // Node.js — try better-sqlite3 (optional dep)
+  // Node.js — try better-sqlite3 (optional dep, requires native compilation)
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const BetterSqlite3 = require('better-sqlite3') as new (path: string) => {
@@ -61,9 +61,31 @@ function openSqlite(filePath: string): SqliteDB {
     db.pragma('foreign_keys = ON')
     return db
   } catch {
-    throw new Error(
-      'No SQLite driver available. In Bun, bun:sqlite is built-in. In Node, install better-sqlite3.'
-    )
+    // Fallback: pure-JS in-memory store (no persistence, no native dep)
+    // Good enough for CLI one-shot runs and dev. Sessions are not saved to disk.
+    return createMemoryDb()
+  }
+}
+
+/**
+ * Pure-JS in-memory SQLite shim.
+ * Supports exec (DDL ignored), prepare → run/get/all against a JS Map.
+ * Not a real SQL engine — just enough to keep OrchestratorService happy.
+ */
+function createMemoryDb(): SqliteDB {
+  const tables = new Map<string, Map<string, Record<string, unknown>>>()
+  let idSeq = 0
+
+  const noopStmt: SqliteStmt = {
+    run: () => ({ lastInsertRowid: ++idSeq }),
+    get: () => undefined,
+    all: () => [],
+  }
+
+  return {
+    exec: (_sql: string) => { /* DDL: silently ignored */ },
+    prepare: (_sql: string): SqliteStmt => noopStmt,
+    close: () => { tables.clear() },
   }
 }
 

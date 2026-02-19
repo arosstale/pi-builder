@@ -13,7 +13,8 @@ export * from './advanced-routing'
 export { AgentLogger } from './logger'
 
 // Phase 1A: SimpleBaseAgent avoids collision with agent.ts BaseAgent
-export { BaseAgent as SimpleBaseAgent, Task as SimpleTask, TaskResult as SimpleTaskResult, ExecutionPlan } from './base-agent'
+export { BaseAgent as SimpleBaseAgent } from './base-agent'
+export type { Task as SimpleTask, TaskResult as SimpleTaskResult, ExecutionPlan } from './base-agent'
 // ClaudeAgent exported via provider-agents above
 export { agentRegistry } from './agent-registry'
 
