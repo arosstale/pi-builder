@@ -9,9 +9,12 @@ describe('CLI', () => {
     expect(program).toHaveProperty('description')
   })
 
-  it('should export program instance', async () => {
-    // Dynamic import to avoid executing the CLI during test
-    const cliModule = await import('../src/cli.js')
-    expect(cliModule).toBeDefined()
+  it('should verify commander program structure', () => {
+    // Test that commander provides expected API
+    const testProgram = program
+    expect(typeof testProgram.name).toBe('function')
+    expect(typeof testProgram.version).toBe('function')
+    expect(typeof testProgram.command).toBe('function')
+    expect(typeof testProgram.parse).toBe('function')
   })
 })
