@@ -20,9 +20,11 @@
     "@mariozechner/pi-coding-agent": "^0.53.0",
     "@pi-builder/types": "workspace:*",
     "@pi-builder/utils": "workspace:*",
+    "@types/ws": "^8.18.1",
     "better-sqlite3": "^12.6.2",
     "express": "^4.21.0",
-    "node-fetch": "^3.0.0"
+    "node-fetch": "^3.0.0",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
