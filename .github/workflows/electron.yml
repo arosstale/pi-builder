@@ -1,0 +1,48 @@
+name: Build Electron App
+
+on:
+  push:
+    branches: [master]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            electron_args: --linux AppImage
+          - os: macos-latest
+            electron_args: --mac dmg
+          - os: windows-latest
+            electron_args: --win portable
+
+    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.os }})
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Type check
+        run: bun run typecheck
+
+      - name: Build Electron app
+        working-directory: apps/desktop
+        run: npx electron-builder ${{ matrix.electron_args }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-${{ matrix.os }}
+          path: apps/desktop/release/
