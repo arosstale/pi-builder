@@ -248,6 +248,49 @@
     font-family: var(--font-mono);
   }
 
+  /* ── Agent selector bar ── */
+  #agent-bar {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  #agent-bar.visible { display: flex; }
+  #agent-bar::-webkit-scrollbar { display: none; }
+
+  .agent-pill {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+    flex-shrink: 0;
+  }
+  .agent-pill:hover { border-color: var(--accent); color: var(--accent); }
+  .agent-pill.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: #1c2d40;
+  }
+  .agent-pill.auto.active {
+    border-color: var(--success);
+    color: var(--success);
+    background: #122318;
+  }
+  .agent-pill.last-used {
+    border-color: #3d444d;
+    color: var(--text);
+  }
+
   /* ── Scrollbar ── */
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -264,6 +307,8 @@
   <input class="ws-input" id="ws-url" placeholder="ws://…">
   <button class="agents-pill" onclick="toggleSidebar()">agents</button>
 </header>
+
+<div id="agent-bar"></div>
 
 <main>
   <div id="messages">
@@ -298,6 +343,7 @@ let ws = null
 let streaming = null   // { el: Element, cursor: Element } | null
 let msgSeq = 0
 let sidebarOpen = false
+let pinnedAgent = null  // null = Auto, string = agent id
 
 // ── Auto-detect WS URL ────────────────────────────────────────────────────
 // When served via HTTP (e.g. http://localhost:18900/), derive WS URL from page host.
@@ -385,6 +431,7 @@ function handleFrame(f) {
     case 'turn_complete':
       finishStream(f.message)
       setBar(`✓ ${f.message?.agentUsed || ''} — ${f.message?.durationMs || 0}ms`)
+      if (f.message?.agentUsed) flashLastUsed(f.message.agentUsed)
       break
 
     case 'agent_end':
@@ -494,6 +541,7 @@ function requestHealth() {
 }
 
 function renderAgentList(list) {
+  // Sidebar
   const el = document.getElementById('agent-list')
   if (!list || list.length === 0) {
     el.innerHTML = '<div style="padding:12px 16px;font-size:12px;color:var(--muted)">No agents found</div>'
@@ -505,6 +553,54 @@ function renderAgentList(list) {
       <span>${escHtml(a.id)}</span>
     </div>`
   ).join('')
+
+  // Agent selector bar
+  const bar = document.getElementById('agent-bar')
+  bar.innerHTML = ''
+
+  const autoPill = document.createElement('button')
+  autoPill.className = 'agent-pill auto' + (pinnedAgent === null ? ' active' : '')
+  autoPill.textContent = 'Auto'
+  autoPill.title = 'Route to best available agent'
+  autoPill.addEventListener('click', () => setPinnedAgent(null))
+  bar.appendChild(autoPill)
+
+  for (const a of list) {
+    const pill = document.createElement('button')
+    pill.className = 'agent-pill' + (pinnedAgent === a.id ? ' active' : '')
+    pill.textContent = a.id
+    pill.title = a.capabilities?.join(', ') || a.id
+    pill.dataset.agentId = a.id
+    pill.addEventListener('click', () => setPinnedAgent(a.id))
+    bar.appendChild(pill)
+  }
+
+  bar.classList.add('visible')
+}
+
+function setPinnedAgent(agentId) {
+  pinnedAgent = agentId
+  // Update pill active states
+  const bar = document.getElementById('agent-bar')
+  bar.querySelectorAll('.agent-pill').forEach(p => {
+    p.classList.remove('active', 'last-used')
+    const isAuto = p.classList.contains('auto')
+    const matches = isAuto ? agentId === null : p.dataset.agentId === agentId
+    if (matches) p.classList.add('active')
+  })
+  // Update placeholder
+  const input = document.getElementById('input-box')
+  input.placeholder = agentId
+    ? `Ask ${agentId}…`
+    : 'Ask anything about your codebase…'
+}
+
+function flashLastUsed(agentId) {
+  if (pinnedAgent !== null) return  // pinned — don't flash
+  const bar = document.getElementById('agent-bar')
+  bar.querySelectorAll('.agent-pill').forEach(p => p.classList.remove('last-used'))
+  const pill = bar.querySelector(`[data-agent-id="${CSS.escape(agentId)}"]`)
+  if (pill) pill.classList.add('last-used')
 }
 
 function renderHealth(agents) {
@@ -529,7 +625,9 @@ function sendMessage() {
   input.style.height = 'auto'
   enableInput(false)
 
-  send({ type: 'send', id: `msg-${Date.now()}`, message: text })
+  // If an agent is pinned, prepend @agentid (middleware handles routing)
+  const message = pinnedAgent ? `@${pinnedAgent} ${text}` : text
+  send({ type: 'send', id: `msg-${Date.now()}`, message })
 }
 
 // ── UI helpers ─────────────────────────────────────────────────────────────
