@@ -11,6 +11,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { WebSocket } from 'ws'
+import { request as httpRequest } from 'node:http'
 import { PiBuilderGateway } from '../src/server/websocket-server'
 
 // ---------------------------------------------------------------------------
@@ -18,12 +19,12 @@ import { PiBuilderGateway } from '../src/server/websocket-server'
 // ---------------------------------------------------------------------------
 
 /** Connect and collect all frames into a queue so we never miss early ones */
-function connectWithQueue(port: number): Promise<{
+function connectWithQueue(port: number, path = ''): Promise<{
   ws: WebSocket
   next: (timeoutMs?: number) => Promise<Record<string, unknown>>
 }> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}`)
+    const ws = new WebSocket(`ws://127.0.0.1:${port}${path}`)
     const queue: Record<string, unknown>[] = []
     const waiters: Array<(f: Record<string, unknown>) => void> = []
 
@@ -54,6 +55,32 @@ function connectWithQueue(port: number): Promise<{
 
 function sendRaw(ws: WebSocket, frame: Record<string, unknown>): void {
   ws.send(JSON.stringify(frame))
+}
+
+/** Make a GET request and resolve with the HTTP status code */
+function httpGetStatus(url: string, bearerToken?: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url)
+    const opts = {
+      hostname: parsed.hostname,
+      port: Number(parsed.port),
+      path: parsed.pathname,
+      method: 'GET',
+      headers: bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {},
+    }
+    const req = httpRequest(opts, (res) => resolve(res.statusCode ?? 0))
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+/** Open a WS and return the close code (or -1 on error before open) */
+function wsCloseCode(port: number, path = ''): Promise<number> {
+  return new Promise<number>(resolve => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}${path}`)
+    ws.on('close', code => resolve(code))
+    ws.on('error', () => resolve(-1))
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -167,5 +194,95 @@ describe('PiBuilderGateway WebSocket protocol', () => {
     expect(gateway.port).toBe(port)
     expect(gateway.host).toBe('127.0.0.1')
     expect(gateway.url).toBe(`ws://127.0.0.1:${port}`)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Auth — rejection tests (_trustLocalhost: false so 127.0.0.1 is not bypassed)
+// ---------------------------------------------------------------------------
+
+describe('PiBuilderGateway auth (token required)', () => {
+  let gateway: PiBuilderGateway
+  let port: number
+  const token = 'super-secret-token'
+
+  beforeAll(async () => {
+    port = 19020 + Math.floor(Math.random() * 30)
+    gateway = new PiBuilderGateway({
+      port,
+      host: '127.0.0.1',
+      orchestrator: { dbPath: ':memory:' },
+      authToken: token,
+      _trustLocalhost: false,
+    })
+    await gateway.start()
+  }, 30_000)
+
+  afterAll(async () => {
+    await gateway.stop()
+  }, 10_000)
+
+  it('rejects HTTP request without token → 401', async () => {
+    const status = await httpGetStatus(`http://127.0.0.1:${port}/`)
+    expect(status).toBe(401)
+  })
+
+  it('rejects HTTP request with wrong token → 401', async () => {
+    const status = await httpGetStatus(`http://127.0.0.1:${port}/`, 'wrong-token')
+    expect(status).toBe(401)
+  })
+
+  it('accepts HTTP request with correct token → 200', async () => {
+    const status = await httpGetStatus(`http://127.0.0.1:${port}/`, token)
+    expect(status).toBe(200)
+  })
+
+  it('accepts WS upgrade with ?token= query param', async () => {
+    const { ws, next } = await connectWithQueue(port, `?token=${token}`)
+    const frame = await next()
+    expect(frame.type).toBe('hello')
+    ws.close()
+  })
+
+  it('rejects WS upgrade without token → close code 4001', async () => {
+    const code = await wsCloseCode(port)
+    expect(code).toBe(4001)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Auth — localhost bypass (127.0.0.1 trusted even when authToken is set)
+// ---------------------------------------------------------------------------
+
+describe('PiBuilderGateway auth localhost bypass', () => {
+  let gateway: PiBuilderGateway
+  let port: number
+
+  beforeAll(async () => {
+    port = 19060 + Math.floor(Math.random() * 30)
+    gateway = new PiBuilderGateway({
+      port,
+      host: '127.0.0.1',
+      orchestrator: { dbPath: ':memory:' },
+      authToken: 'any-token',
+      // _trustLocalhost defaults to true
+    })
+    await gateway.start()
+  }, 30_000)
+
+  afterAll(async () => {
+    await gateway.stop()
+  }, 10_000)
+
+  it('allows HTTP request from 127.0.0.1 without token → 200', async () => {
+    const status = await httpGetStatus(`http://127.0.0.1:${port}/`)
+    expect(status).toBe(200)
+  })
+
+  it('allows WS connection from 127.0.0.1 without token', async () => {
+    const { ws, next } = await connectWithQueue(port)
+    const frame = await next()
+    expect(frame.type).toBe('hello')
+    ws.close()
   })
 })

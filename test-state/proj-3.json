@@ -2,12 +2,12 @@
   "projectId": "proj-3",
   "projectName": "Project 3",
   "version": 3,
-  "updated": "2026-02-19T19:17:28.327Z",
+  "updated": "2026-02-19T19:39:07.186Z",
   "tasks": [
     {
       "id": "task-1",
       "status": "in_progress",
-      "startedAt": "2026-02-19T19:17:28.327Z"
+      "startedAt": "2026-02-19T19:39:07.186Z"
     }
   ],
   "nextActions": [],
