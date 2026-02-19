@@ -142,7 +142,7 @@ describe('OrchestratorService', () => {
           },
         }),
       }
-      ;(service as any).orchestrator = mockOrchestrator
+      ;(service as any).wrapperOrchestrator = mockOrchestrator
       
       const testMessage = 'Test user message'
       await service.processMessage(testMessage)

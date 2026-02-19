@@ -1,23 +1,44 @@
 {
   "name": "@pi-builder/desktop",
   "version": "0.1.0",
-  "description": "Desktop app for Pi Builder (Electron + Tauri)",
+  "description": "Pi Builder desktop app (Electron)",
   "license": "MIT",
   "private": true,
-  "type": "module",
+  "main": "dist/main.js",
   "scripts": {
-    "dev": "electron .",
-    "build": "electron-builder"
+    "dev": "tsc --noEmit && electron dist/main.js",
+    "build": "tsc",
+    "dist": "tsc && electron-builder",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@pi-builder/core": "workspace:*",
-    "@pi-builder/types": "workspace:*",
-    "@pi-builder/utils": "workspace:*"
+    "electron": "^27.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "electron": "^27.0.0",
     "electron-builder": "^24.0.0",
     "typescript": "^5.4.0"
+  },
+  "build": {
+    "appId": "com.artale.pi-builder",
+    "productName": "Pi Builder",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "../../apps/web/pi-builder-ui.html"
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }

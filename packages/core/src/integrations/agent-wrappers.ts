@@ -368,7 +368,15 @@ export class WrapperOrchestrator extends EventEmitter {
 
   register(wrapper: AgentWrapper): this {
     this.wrappers.set(wrapper.id, wrapper)
+    this.healthCache.delete(wrapper.id)
     this.emit('wrapper:registered', wrapper.id)
+    return this
+  }
+
+  unregister(id: string): this {
+    this.wrappers.delete(id)
+    this.healthCache.delete(id)
+    this.emit('wrapper:unregistered', id)
     return this
   }
 

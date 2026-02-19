@@ -1,25 +1,46 @@
 /**
  * OrchestratorService
  *
- * Inspired by the TAC agentic-horizon course OrchestratorService pattern.
- * Manages a persistent orchestrator agent that:
- *   1. Receives user messages
- *   2. Streams responses via EventEmitter
- *   3. Spawns / commands sub-agents through WrapperOrchestrator
- *   4. Persists sessions, costs, and history in SQLite
+ * Routes user messages to CLI agents with:
+ *   - Input transform middleware (intercept / rewrite prompts before dispatch)
+ *   - Dynamic wrapper registry (register agents at runtime)
+ *   - Streaming chunks via EventEmitter
+ *   - SQLite session persistence
  *
  * Architecture:
- *   User → OrchestratorService → WrapperOrchestrator → [claude|aider|opencode|…]
- *
- * Three-phase execution per turn:
- *   Phase 1: pre  — persist user message, emit 'user_message'
- *   Phase 2: exec — spawn chosen agent, stream chunks via 'chunk' events
- *   Phase 3: post — persist response, costs, emit 'turn_complete'
+ *   User → middleware chain → OrchestratorService → WrapperOrchestrator → agent
  */
 
 import { EventEmitter } from 'events'
 import { Database } from '../db/database'
-import { WrapperOrchestrator, createOrchestrator, type AgentTask, type AgentResult } from '../integrations/agent-wrappers'
+import {
+  WrapperOrchestrator,
+  createOrchestrator,
+  type AgentWrapper,
+  type AgentTask,
+  type AgentResult,
+} from '../integrations/agent-wrappers'
+
+// ---------------------------------------------------------------------------
+// Middleware
+// ---------------------------------------------------------------------------
+
+export type MiddlewareAction =
+  | { action: 'pass' }                          // continue as-is
+  | { action: 'transform'; prompt: string }     // rewrite the prompt
+  | { action: 'block'; reason: string }         // stop — emit error frame
+  | { action: 'route'; agentId: string }        // force a specific agent
+
+export interface MiddlewareContext {
+  sessionId: string
+  history: Readonly<ChatMessage[]>
+  inferred: { capability?: string }
+}
+
+export type MiddlewareFn = (
+  prompt: string,
+  ctx: MiddlewareContext,
+) => MiddlewareAction | Promise<MiddlewareAction>
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,11 +50,11 @@ export interface OrchestratorConfig {
   workDir?: string
   /** Ordered list of preferred agents (e.g. ['claude', 'aider']) */
   preferredAgents?: string[]
-  /** SQLite path — defaults to :memory: in test mode */
+  /** SQLite path — defaults to :memory: */
   dbPath?: string
-  /** System prompt injected as context to every task */
+  /** System prompt prepended to every task */
   systemPrompt?: string
-  /** Task timeout in ms, default 120_000 */
+  /** Task timeout in ms (default 120_000) */
   timeout?: number
 }
 
@@ -53,35 +74,29 @@ export interface TurnResult {
 }
 
 // ---------------------------------------------------------------------------
-// Events emitted by OrchestratorService
-// ---------------------------------------------------------------------------
-// 'user_message'  → ChatMessage
-// 'chunk'         → { text: string, agent: string }
-// 'turn_complete' → TurnResult
-// 'agent_start'   → { agent: string, task: string }
-// 'agent_end'     → { agent: string, status: string, durationMs: number }
-// 'error'         → Error
-
-// ---------------------------------------------------------------------------
-// OrchestratorService
+// Events:
+//   'user_message'  → ChatMessage
+//   'chunk'         → { text: string, agent: string }
+//   'turn_complete' → TurnResult
+//   'agent_start'   → { agent: string, task: string }
+//   'agent_end'     → { agent: string, status: string, durationMs: number }
+//   'error'         → Error
 // ---------------------------------------------------------------------------
 
 export class OrchestratorService extends EventEmitter {
   private config: OrchestratorConfig
-  private orchestrator: WrapperOrchestrator
+  private wrapperOrchestrator: WrapperOrchestrator
   private db: Database
   private history: ChatMessage[] = []
   private sessionId: string
   private isExecuting = false
+  private middleware: MiddlewareFn[] = []
 
   constructor(config: OrchestratorConfig = {}) {
     super()
-    this.config = {
-      timeout: 120_000,
-      ...config,
-    }
+    this.config = { timeout: 120_000, ...config }
     this.sessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    this.orchestrator = createOrchestrator({
+    this.wrapperOrchestrator = createOrchestrator({
       preferredAgents: config.preferredAgents,
       fallback: true,
     })
@@ -101,102 +116,211 @@ export class OrchestratorService extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
+  // Middleware registration
+  // ---------------------------------------------------------------------------
+
+  /** Add a transform/block/route handler that runs before every agent dispatch. */
+  use(fn: MiddlewareFn): this {
+    this.middleware.push(fn)
+    return this
+  }
+
+  /** Remove a previously registered middleware function. */
+  unuse(fn: MiddlewareFn): this {
+    const i = this.middleware.indexOf(fn)
+    if (i !== -1) this.middleware.splice(i, 1)
+    return this
+  }
+
+  /** Run the full middleware chain. Returns final prompt + optional forced agentId. */
+  private async runMiddleware(
+    rawPrompt: string,
+    ctx: MiddlewareContext,
+  ): Promise<{ prompt: string; forceAgent?: string } | null> {
+    let prompt = rawPrompt
+
+    for (const fn of this.middleware) {
+      const result = await fn(prompt, ctx)
+
+      if (result.action === 'block') {
+        this.emit('error', new Error(`[middleware blocked] ${result.reason}`))
+        return null
+      }
+
+      if (result.action === 'transform') {
+        prompt = result.prompt
+      }
+
+      if (result.action === 'route') {
+        // Force agent — still run remaining middleware for transforms
+        return { prompt, forceAgent: result.agentId }
+      }
+      // 'pass' → continue
+    }
+
+    return { prompt }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dynamic wrapper registry
+  // ---------------------------------------------------------------------------
+
+  /** Register a custom agent wrapper at runtime. */
+  registerWrapper(wrapper: AgentWrapper): this {
+    this.wrapperOrchestrator.register(wrapper)
+    return this
+  }
+
+  /** Unregister a wrapper by id. */
+  unregisterWrapper(id: string): this {
+    this.wrapperOrchestrator.unregister(id)
+    return this
+  }
+
+  /** List all registered wrappers (id + name + capabilities). */
+  listWrappers(): Array<{ id: string; name: string; capabilities: string[] }> {
+    return this.wrapperOrchestrator.getWrappers().map((w) => ({
+      id: w.id,
+      name: w.name,
+      capabilities: w.capabilities,
+    }))
+  }
+
+  // ---------------------------------------------------------------------------
   // Core: process a user turn
   // ---------------------------------------------------------------------------
 
   async processMessage(userMessage: string): Promise<TurnResult> {
     if (this.isExecuting) {
-      throw new Error('OrchestratorService is already processing a message')
+      throw new Error('Already processing — wait for current turn to complete')
     }
     this.isExecuting = true
 
     try {
-      // ── Phase 1: pre ──────────────────────────────────────────────────────
-      const userChatMsg: ChatMessage = {
+      // ── Phase 1: record user message ─────────────────────────────────────
+      const userMsg: ChatMessage = {
         id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         role: 'user',
         content: userMessage,
         timestamp: new Date(),
       }
+      this.history.push(userMsg)
+      this.emit('user_message', userMsg)
 
-      this.history.push(userChatMsg)
-      this.emit('user_message', userChatMsg)
-
-      // Persist to SQLite
       await this.db.createTask({
         userId: this.sessionId,
         type: 'user_message',
         status: 'completed',
-        input: { message: userMessage, messageId: userChatMsg.id },
+        input: { message: userMessage, messageId: userMsg.id },
       })
 
-      // ── Phase 2: execute ──────────────────────────────────────────────────
+      // ── Phase 2: middleware ───────────────────────────────────────────────
+      const capability = this.inferCapability(userMessage)
+      const ctx: MiddlewareContext = {
+        sessionId: this.sessionId,
+        history: this.history,
+        inferred: { capability },
+      }
+
+      const mwResult = await this.runMiddleware(userMessage, ctx)
+      if (!mwResult) {
+        // Blocked by middleware — emit synthetic turn_complete with error
+        const errMsg: ChatMessage = {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          role: 'assistant',
+          content: '[blocked by middleware]',
+          timestamp: new Date(),
+        }
+        this.history.push(errMsg)
+        const agentResult: AgentResult = {
+          agent: 'middleware',
+          status: 'error',
+          output: '[blocked by middleware]',
+          durationMs: 0,
+        }
+        const result: TurnResult = { message: errMsg, agentResult }
+        this.emit('turn_complete', result)
+        return result
+      }
+
+      const { prompt: finalPrompt, forceAgent } = mwResult
+
+      // ── Phase 3: select agent ─────────────────────────────────────────────
       const task: AgentTask = {
-        prompt: this.buildPrompt(userMessage),
+        prompt: this.buildPrompt(finalPrompt),
         workDir: this.config.workDir,
         timeout: this.config.timeout,
-        capability: this.inferCapability(userMessage),
+        capability,
       }
 
-      const selectedWrapper = await this.orchestrator.selectForTask(task)
+      let selectedWrapper: AgentWrapper | null = null
+
+      if (forceAgent) {
+        selectedWrapper = this.wrapperOrchestrator.getWrapper(forceAgent) ?? null
+        if (!selectedWrapper) {
+          throw new Error(`Middleware routed to unknown agent: ${forceAgent}`)
+        }
+      } else {
+        selectedWrapper = await this.wrapperOrchestrator.selectForTask(task)
+      }
+
       if (!selectedWrapper) {
-        throw new Error('No available CLI agent found. Install claude, aider, opencode, or any other supported agent.')
+        throw new Error(
+          'No available CLI agent found. Install claude, aider, opencode, or another supported agent.',
+        )
       }
 
-      this.emit('agent_start', { agent: selectedWrapper.id, task: userMessage.slice(0, 80) })
+      // ── Phase 4: stream ───────────────────────────────────────────────────
+      this.emit('agent_start', { agent: selectedWrapper.id, task: finalPrompt.slice(0, 80) })
 
-      // Stream chunks in real-time
+      const t0 = Date.now()
       let streamedOutput = ''
+
       for await (const chunk of selectedWrapper.executeStream(task)) {
         streamedOutput += chunk
         this.emit('chunk', { text: chunk, agent: selectedWrapper.id })
       }
 
-      // Get the final result (re-execute for structured result — streaming already happened)
-      // In production you'd combine these; here we use the streamed output directly
+      const durationMs = Date.now() - t0
       const agentResult: AgentResult = {
         agent: selectedWrapper.id,
         status: 'success',
         output: streamedOutput,
-        durationMs: 0,
+        durationMs,
       }
 
       this.emit('agent_end', {
         agent: selectedWrapper.id,
         status: agentResult.status,
-        durationMs: agentResult.durationMs,
+        durationMs,
       })
 
-      // ── Phase 3: post ─────────────────────────────────────────────────────
+      // ── Phase 5: persist + return ─────────────────────────────────────────
       const assistantMsg: ChatMessage = {
         id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         role: 'assistant',
         content: agentResult.output,
         agentUsed: agentResult.agent,
-        durationMs: agentResult.durationMs,
+        durationMs,
         timestamp: new Date(),
       }
-
       this.history.push(assistantMsg)
 
-      // Persist response
       await this.db.createTask({
         userId: this.sessionId,
         type: 'assistant_response',
-        status: agentResult.status === 'success' ? 'completed' : 'failed',
-        input: { messageId: userChatMsg.id },
+        status: 'completed',
+        input: { messageId: userMsg.id },
         output: {
           message: agentResult.output,
           agent: agentResult.agent,
-          durationMs: agentResult.durationMs,
-          exitCode: agentResult.exitCode,
+          durationMs,
         },
-        error: agentResult.status === 'error' ? agentResult.stderr : undefined,
       })
 
-      const result: TurnResult = { message: assistantMsg, agentResult }
-      this.emit('turn_complete', result)
-      return result
+      const turnResult: TurnResult = { message: assistantMsg, agentResult }
+      this.emit('turn_complete', turnResult)
+      return turnResult
 
     } finally {
       this.isExecuting = false
@@ -204,24 +328,34 @@ export class OrchestratorService extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
-  // Streaming interface — yields text chunks as they arrive
+  // Streaming interface (yields raw chunks)
   // ---------------------------------------------------------------------------
 
   async *stream(userMessage: string): AsyncGenerator<string> {
     if (this.isExecuting) {
-      throw new Error('OrchestratorService is already processing a message')
+      throw new Error('Already processing — wait for current turn to complete')
     }
     this.isExecuting = true
 
     try {
+      const capability = this.inferCapability(userMessage)
+      const ctx: MiddlewareContext = {
+        sessionId: this.sessionId,
+        history: this.history,
+        inferred: { capability },
+      }
+      const mwResult = await this.runMiddleware(userMessage, ctx)
+      if (!mwResult) return
+
+      const { prompt: finalPrompt } = mwResult
       const task: AgentTask = {
-        prompt: this.buildPrompt(userMessage),
+        prompt: this.buildPrompt(finalPrompt),
         workDir: this.config.workDir,
         timeout: this.config.timeout,
-        capability: this.inferCapability(userMessage),
+        capability,
       }
 
-      for await (const chunk of this.orchestrator.executeStream(task)) {
+      for await (const chunk of this.wrapperOrchestrator.executeStream(task)) {
         yield chunk
       }
     } finally {
@@ -230,12 +364,11 @@ export class OrchestratorService extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
-  // Agent health — which agents are available right now
+  // Agent info
   // ---------------------------------------------------------------------------
 
   async availableAgents(): Promise<Array<{ id: string; name: string; binary: string; capabilities: string[] }>> {
-    const agents = await this.orchestrator.availableAgents()
-    return agents.map((a) => ({
+    return (await this.wrapperOrchestrator.availableAgents()).map((a) => ({
       id: a.id,
       name: a.name,
       binary: a.binary,
@@ -244,7 +377,7 @@ export class OrchestratorService extends EventEmitter {
   }
 
   async agentHealth(): Promise<Record<string, boolean>> {
-    return this.orchestrator.checkHealth()
+    return this.wrapperOrchestrator.checkHealth()
   }
 
   // ---------------------------------------------------------------------------
@@ -274,11 +407,11 @@ export class OrchestratorService extends EventEmitter {
       parts.push(`System context:\n${this.config.systemPrompt}\n`)
     }
 
-    // Include last 3 turns for context
-    const recentHistory = this.history.slice(-6)
-    if (recentHistory.length > 0) {
+    // Last 3 turns for context
+    const recent = this.history.slice(-6)
+    if (recent.length > 0) {
       parts.push('Recent conversation:')
-      for (const msg of recentHistory) {
+      for (const msg of recent) {
         parts.push(`${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content.slice(0, 500)}`)
       }
       parts.push('')
@@ -290,16 +423,14 @@ export class OrchestratorService extends EventEmitter {
 
   private inferCapability(message: string): string | undefined {
     const lower = message.toLowerCase()
-
-    if (/\b(bug|fix|error|issue|broken|crash|fail)\b/.test(lower)) return 'bug-fixing'
-    if (/\b(refactor|clean|improve|simplify|restructure)\b/.test(lower)) return 'refactoring'
-    if (/\b(test|spec|coverage|unit|integration)\b/.test(lower)) return 'testing'
-    if (/\b(document|readme|comment|explain|describe)\b/.test(lower)) return 'explanation'
-    if (/\b(generate|create|build|implement|write|add)\b/.test(lower)) return 'code-generation'
-    if (/\b(git|commit|branch|merge|pr|pull request)\b/.test(lower)) return 'git-aware'
-    if (/\b(multi.?file|across|whole|project.?wide)\b/.test(lower)) return 'multi-file'
-
-    return 'code-generation' // default
+    if (/\b(bug|fix|error|issue|broken|crash|fail)\b/.test(lower))          return 'bug-fixing'
+    if (/\b(refactor|clean|improve|simplify|restructure)\b/.test(lower))    return 'refactoring'
+    if (/\b(test|spec|coverage|unit|integration)\b/.test(lower))            return 'testing'
+    if (/\b(document|readme|comment|explain|describe)\b/.test(lower))       return 'explanation'
+    if (/\b(generate|create|build|implement|write|add)\b/.test(lower))      return 'code-generation'
+    if (/\b(git|commit|branch|merge|pr|pull request)\b/.test(lower))        return 'git-aware'
+    if (/\b(multi.?file|across|whole|project.?wide)\b/.test(lower))         return 'multi-file'
+    return 'code-generation'
   }
 }
 
@@ -308,7 +439,7 @@ export class OrchestratorService extends EventEmitter {
 // ---------------------------------------------------------------------------
 
 export async function createOrchestratorService(
-  config?: OrchestratorConfig
+  config?: OrchestratorConfig,
 ): Promise<OrchestratorService> {
   const svc = new OrchestratorService(config)
   await svc.init()

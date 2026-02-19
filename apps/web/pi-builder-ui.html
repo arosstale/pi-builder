@@ -289,6 +289,10 @@
 <div id="status-bar">not connected</div>
 
 <script>
+// Injected by Electron preload (undefined when running in browser)
+/** @type {{ isDesktop: boolean, gatewayInfo: () => Promise<{url:string|null}>, versions: object } | undefined} */
+const piBuilderDesktop = window.piBuilderDesktop
+
 // ── State ──────────────────────────────────────────────────────────────────
 let ws = null
 let streaming = null   // { el: Element, cursor: Element } | null
@@ -298,15 +302,27 @@ let sidebarOpen = false
 // ── Auto-detect WS URL ────────────────────────────────────────────────────
 // When served via HTTP (e.g. http://localhost:18900/), derive WS URL from page host.
 // When opened as a local file, fall back to ws://127.0.0.1:18900.
-;(function setDefaultWsUrl() {
+;(async function setDefaultWsUrl() {
   const input = document.getElementById('ws-url')
   if (input.value) return
+
+  // Desktop app: ask the preload for the gateway URL
+  if (window.piBuilderDesktop?.isDesktop) {
+    try {
+      const info = await window.piBuilderDesktop.gatewayInfo()
+      if (info?.url) { input.value = info.url; return }
+    } catch { /* fallthrough */ }
+  }
+
+  // Served over HTTP: derive from page host
   if (location.protocol === 'http:' || location.protocol === 'https:') {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     input.value = `${proto}://${location.host}`
-  } else {
-    input.value = 'ws://127.0.0.1:18900'
+    return
   }
+
+  // Local file fallback
+  input.value = 'ws://127.0.0.1:18900'
 })()
 
 // ── WebSocket connection ───────────────────────────────────────────────────
