@@ -35,6 +35,7 @@
     "packages/core/src/integrations/lm-studio-provider.ts",
     "packages/core/src/integrations/ollama-provider.ts",
     "packages/core/src/agents/provider-adapter.ts",
-    "packages/core/src/agents/provider-agents.ts"
+    "packages/core/src/agents/provider-agents.ts",
+    "packages/core/src/agents/claude-agent.ts"
   ]
 }
