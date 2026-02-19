@@ -1,11 +1,26 @@
-import Anthropic from '@anthropic-ai/sdk'
+// @anthropic-ai/sdk is optional — gracefully degrade when not installed
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let Anthropic: any
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  Anthropic = require('@anthropic-ai/sdk').default ?? require('@anthropic-ai/sdk')
+} catch {
+  Anthropic = null
+}
+
 import { BaseAgent, Task, TaskResult } from './base-agent'
 
 export class ClaudeAgent extends BaseAgent {
-  private client: Anthropic
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private client: any
 
   constructor(apiKey?: string) {
     super('Claude')
+    if (!Anthropic) {
+      throw new Error(
+        'ClaudeAgent requires @anthropic-ai/sdk. Install it: bun add @anthropic-ai/sdk'
+      )
+    }
     this.client = new Anthropic({
       apiKey: apiKey || process.env.ANTHROPIC_API_KEY
     })
