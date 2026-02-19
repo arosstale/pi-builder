@@ -1,9 +1,77 @@
 /**
  * Claude SDK Integration
- * Integrates with Anthropic's Claude SDK
+ * Calls the Anthropic API (or OpenRouter as fallback) to generate code.
  */
 
 import type { CodeGenerationRequest, CodeGenerationResponse } from '../types'
+
+// ---------------------------------------------------------------------------
+// Provider routing — same priority as CodeGenerator
+// ---------------------------------------------------------------------------
+
+type Provider = 'anthropic' | 'openrouter'
+
+interface ApiTarget {
+  provider: Provider
+  baseUrl: string
+  model: string
+  authHeader: string
+}
+
+function resolveTarget(apiKey: string): ApiTarget {
+  // Explicit raw Anthropic key
+  if (apiKey.startsWith('sk-ant-api')) {
+    return {
+      provider: 'anthropic',
+      baseUrl: 'https://api.anthropic.com/v1/messages',
+      model: 'claude-haiku-4-20250514',
+      authHeader: apiKey,
+    }
+  }
+
+  // Explicit OpenRouter key
+  if (apiKey.startsWith('sk-or-')) {
+    return {
+      provider: 'openrouter',
+      baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+      model: 'anthropic/claude-haiku-4-5',
+      authHeader: `Bearer ${apiKey}`,
+    }
+  }
+
+  // Fallback: env vars
+  const orKey = process.env.OPENROUTER_API_KEY
+  if (orKey) {
+    return {
+      provider: 'openrouter',
+      baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+      model: 'anthropic/claude-haiku-4-5',
+      authHeader: `Bearer ${orKey}`,
+    }
+  }
+
+  const oauthToken = process.env.ANTHROPIC_OAUTH_TOKEN
+  if (oauthToken) {
+    return {
+      provider: 'anthropic',
+      baseUrl: 'https://api.anthropic.com/v1/messages',
+      model: 'claude-haiku-4-20250514',
+      authHeader: `Bearer ${oauthToken}`,
+    }
+  }
+
+  throw new Error(
+    'No usable API key. Pass a valid key to ClaudeSDKConfig, or set OPENROUTER_API_KEY / ANTHROPIC_OAUTH_TOKEN'
+  )
+}
+
+function isTestKey(apiKey: string): boolean {
+  return !apiKey || apiKey === 'test-key' || apiKey === 'mock-api-key' || !!process.env.VITEST
+}
+
+// ---------------------------------------------------------------------------
+// ClaudeSDKIntegration
+// ---------------------------------------------------------------------------
 
 export interface ClaudeSDKConfig {
   apiKey: string
@@ -13,31 +81,31 @@ export interface ClaudeSDKConfig {
 }
 
 export class ClaudeSDKIntegration {
-  private model: string = 'claude-3-5-sonnet-20241022'
+  private apiKey: string
+  private model: string
+  private maxTokens: number
 
   constructor(config: ClaudeSDKConfig) {
-    // Store config.apiKey for potential future use
-    void config.apiKey
-    if (config.model) this.model = config.model
+    this.apiKey = config.apiKey ?? ''
+    this.model = config.model ?? 'claude-haiku-4-20250514'
+    this.maxTokens = config.maxTokens ?? 2048
   }
 
   async generate(request: CodeGenerationRequest): Promise<CodeGenerationResponse> {
     try {
-      // Build the prompt
       const systemPrompt = this.buildSystemPrompt(request)
       const userPrompt = this.buildUserPrompt(request)
 
-      // Call Claude API
-      const response = await this.callClaudeAPI(systemPrompt, userPrompt)
+      const { content, tokensUsed, model } = await this.callClaudeAPI(systemPrompt, userPrompt)
 
       return {
-        code: response.content,
-        language: request.language || 'typescript',
-        explanation: response.explanation || '',
+        code: content,
+        language: request.language ?? 'typescript',
+        explanation: '',
         metadata: {
-          tokensUsed: response.tokensUsed,
+          tokensUsed,
           generatedAt: new Date(),
-          model: this.model,
+          model,
         },
       }
     } catch (error) {
@@ -47,16 +115,16 @@ export class ClaudeSDKIntegration {
 
   private buildSystemPrompt(request: CodeGenerationRequest): string {
     return `You are an expert code generator. Generate clean, well-commented, production-ready code.
-    
-Framework: ${request.framework || 'JavaScript/TypeScript'}
-Language: ${request.language || 'typescript'}
-Constraints: Follow best practices and modern patterns.`
+
+Framework: ${request.framework ?? 'JavaScript/TypeScript'}
+Language: ${request.language ?? 'typescript'}
+Constraints: Follow best practices and modern patterns. Return only a fenced code block followed by a brief explanation.`
   }
 
   private buildUserPrompt(request: CodeGenerationRequest): string {
     let prompt = request.prompt
 
-    if (request.context) {
+    if (request.context && Object.keys(request.context).length > 0) {
       prompt += '\n\nContext:\n'
       for (const [key, value] of Object.entries(request.context)) {
         prompt += `${key}: ${JSON.stringify(value)}\n`
@@ -69,15 +137,80 @@ Constraints: Follow best practices and modern patterns.`
   private async callClaudeAPI(
     systemPrompt: string,
     userPrompt: string
-  ): Promise<{ content: string; explanation: string; tokensUsed: number }> {
-    // This would call the actual Claude API
-    // For now, return mock response
-    console.log('📝 Calling Claude API...')
-    return {
-      content: '// Claude-generated code will appear here\nconsole.log("Hello from Claude")',
-      explanation: 'Generated using Claude SDK',
-      tokensUsed: Math.ceil((systemPrompt.length + userPrompt.length) / 4),
+  ): Promise<{ content: string; explanation: string; tokensUsed: number; model: string }> {
+    if (isTestKey(this.apiKey)) {
+      return {
+        content: `// Generated by ClaudeSDK\nconsole.log("Hello from Claude")`,
+        explanation: 'Mock response (test mode)',
+        tokensUsed: Math.ceil((systemPrompt.length + userPrompt.length) / 4),
+        model: 'claude-mock',
+      }
     }
+
+    const target = resolveTarget(this.apiKey)
+    let body: string
+    let headers: Record<string, string>
+
+    if (target.provider === 'anthropic') {
+      const isOAuth = target.authHeader.startsWith('Bearer ')
+      headers = {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        ...(isOAuth
+          ? { Authorization: target.authHeader }
+          : { 'x-api-key': target.authHeader }),
+      }
+      body = JSON.stringify({
+        model: target.model,
+        max_tokens: this.maxTokens,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      })
+    } else {
+      headers = {
+        'Content-Type': 'application/json',
+        Authorization: target.authHeader,
+        'HTTP-Referer': 'https://github.com/arosstale/pi-builder',
+        'X-Title': 'pi-builder',
+      }
+      body = JSON.stringify({
+        model: target.model,
+        max_tokens: this.maxTokens,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      })
+    }
+
+    const res = await fetch(target.baseUrl, { method: 'POST', headers, body })
+
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`API error ${res.status}: ${err}`)
+    }
+
+    const data = (await res.json()) as Record<string, unknown>
+    let text: string
+    let tokensUsed: number
+
+    if (target.provider === 'anthropic') {
+      const content = data.content as Array<{ type: string; text: string }>
+      text = content.find(c => c.type === 'text')?.text ?? ''
+      const usage = data.usage as { input_tokens: number; output_tokens: number }
+      tokensUsed = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0)
+    } else {
+      const choices = data.choices as Array<{ message: { content: string } }>
+      text = choices[0]?.message?.content ?? ''
+      const usage = data.usage as { total_tokens: number }
+      tokensUsed = usage?.total_tokens ?? 0
+    }
+
+    // Strip fenced code block if present, keep the code
+    const fence = text.match(/```(?:\w+)?\n([\s\S]*?)```/)
+    const content = fence ? fence[1].trimEnd() : text.trim()
+
+    return { content, explanation: '', tokensUsed, model: target.model }
   }
 
   getModel(): string {
