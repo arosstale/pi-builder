@@ -1,11 +1,39 @@
 /**
  * SDK Integrations
  *
+ * CORE VISION: Pi Builder as a unified interface over any CLI coding agent.
+ * The WrapperOrchestrator routes tasks to whichever agent is installed and
+ * best suited — Claude Code, Aider, OpenCode, Codex, Gemini CLI, Goose, etc.
+ *
  * PRIMARY: Pi Agent SDK — real @mariozechner/pi-coding-agent integration
  * SECONDARY: Pi-Mono CLI wrapper, OpenClaw gateway client
  * LOCAL LLM: Codex, Ollama, LM Studio
- * ROUTING: Multi-channel router
+ * ROUTING: Multi-channel router, CLI agent wrappers
  */
+
+// ─── CLI AGENT WRAPPERS (core vision) ─────────────────────────────────────────
+export {
+  // individual wrappers
+  ClaudeCodeWrapper,
+  AiderWrapper,
+  OpenCodeWrapper,
+  CodexCLIWrapper,
+  GeminiCLIWrapper,
+  GooseWrapper,
+  PlandexWrapper,
+  SWEAgentWrapper,
+  CrushWrapper,
+  GptmeWrapper,
+  // orchestrator
+  WrapperOrchestrator,
+  createOrchestrator,
+} from './agent-wrappers'
+export type {
+  AgentWrapper,
+  AgentTask as CLIAgentTask,
+  AgentResult as CLIAgentResult,
+  OrchestratorConfig,
+} from './agent-wrappers'
 
 // ─── PRIMARY: pi SDK (createAgentSession) ────────────────────────────────────
 export { PiAgentSDKIntegration } from './pi-agent-sdk'
