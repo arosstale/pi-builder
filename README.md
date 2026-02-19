@@ -107,7 +107,7 @@ Connect to `ws://127.0.0.1:18900`.
 
 ```bash
 npx vitest run packages/core
-# 38 files, 968 pass
+# 40 files, 993 pass
 ```
 
 ---
@@ -123,9 +123,11 @@ npx vitest run packages/core
 | SQLite session persistence | ✅ Done |
 | Code generator (Claude direct) | ✅ Done |
 | pi SDK integration | ✅ Done |
-| Desktop app | 🔲 Not started |
-| HTTP serving web UI from gateway | 🔲 Next |
-| Input transform middleware | 🔲 Next |
+| HTTP serving web UI from gateway | ✅ Done |
+| Input transform middleware | ✅ Done |
+| Electron desktop app | ✅ Done |
+| Optional WS auth (`authToken`) | 🔲 In progress |
+| Electron build CI | 🔲 In progress |
 
 ---
 
