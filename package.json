@@ -19,6 +19,7 @@
     "dev:cli": "npm run dev --workspace=apps/cli",
     "build": "npm run typecheck || echo 'Skipping type errors'",
     "build:packages": "npm run build -w @pi-builder/types -w @pi-builder/utils -w @pi-builder/core",
+    "cli:build": "npm run build --workspace=@pi-builder/cli",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
