@@ -353,10 +353,8 @@ export class GptmeWrapper extends BaseAgentWrapper {
 export interface PiAgentWrapperConfig {
   /** Working directory the agent operates in (default: process.cwd()) */
   cwd?: string
-  /** Provider id, e.g. 'anthropic', 'google' (default: reads from pi config) */
-  provider?: string
-  /** Model id e.g. 'claude-haiku-4-20250514' */
-  model?: string
+  // Note: model selection is handled by pi's own settings (~/.pi/agent/settings.json)
+  // The SDK's model field expects Model<Api> (not a string) — configure via pi directly
 }
 
 export class PiAgentWrapper implements AgentWrapper {
@@ -421,26 +419,24 @@ export class PiAgentWrapper implements AgentWrapper {
   }
 
   async *executeStream(task: AgentTask): AsyncGenerator<string> {
-    const {
-      createAgentSession,
-      AuthStorage,
-      ModelRegistry,
-      SessionManager,
-    } = await import('@mariozechner/pi-coding-agent')
+    // Import types alongside values so we can type the options properly
+    const sdk = await import('@mariozechner/pi-coding-agent')
+    const { createAgentSession, AuthStorage, ModelRegistry, SessionManager } = sdk
 
+    // AuthStorage.create(authPath?: string): AuthStorage
+    // ModelRegistry constructor: (authStorage: AuthStorage, modelsJsonPath?: string)
+    // SessionManager.inMemory(cwd?: string): SessionManager
+    // createAgentSession(options?: CreateAgentSessionOptions): Promise<CreateAgentSessionResult>
+    // model field is Model<Api> — not a string; omit and let pi use its configured default
     const authStorage = AuthStorage.create()
     const modelRegistry = new ModelRegistry(authStorage)
 
-    const sessionOptions: Record<string, unknown> = {
-      sessionManager: SessionManager.inMemory(),
+    const { session } = await createAgentSession({
+      sessionManager: SessionManager.inMemory(task.workDir ?? this.config.cwd ?? process.cwd()),
       authStorage,
       modelRegistry,
       cwd: task.workDir ?? this.config.cwd ?? process.cwd(),
-    }
-
-    if (this.config.model) sessionOptions.model = this.config.model
-
-    const { session } = await createAgentSession(sessionOptions as never)
+    })
 
     // Buffer for yielding text chunks
     const queue: string[] = []
