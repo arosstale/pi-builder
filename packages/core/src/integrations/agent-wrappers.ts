@@ -247,7 +247,10 @@ export class CodexCLIWrapper extends BaseAgentWrapper {
   capabilities = ['code-generation', 'command-execution', 'repo-tasks']
 
   protected buildArgs(task: AgentTask): string[] {
-    const args = ['--approval-mode', 'auto-edit', task.prompt]
+    // codex exec --full-auto "<prompt>" [--cd <dir>]
+    // --full-auto: sandboxed auto-execution, no confirmation prompts
+    const args = ['exec', '--full-auto', task.prompt]
+    if (task.workDir) args.push('--cd', task.workDir)
     return args
   }
 }
@@ -263,7 +266,38 @@ export class GeminiCLIWrapper extends BaseAgentWrapper {
   capabilities = ['code-generation', 'research', 'large-context', 'multimodal']
 
   protected buildArgs(task: AgentTask): string[] {
-    return ['-p', task.prompt]
+    // -p: non-interactive (headless) mode
+    // --yolo: auto-approve all tool calls (required for unattended use)
+    return ['-p', task.prompt, '--yolo']
+  }
+
+  // gemini --version prints the version then hangs indefinitely (never exits).
+  // Strategy: kill after 2s, resolve with whatever stdout we collected by then.
+  async version(): Promise<string | null> {
+    return new Promise((resolve) => {
+      const proc = spawn(this.binary, ['--version'], { stdio: 'pipe' })
+      let out = ''
+      let settled = false
+
+      const done = (result: string | null) => {
+        if (settled) return
+        settled = true
+        resolve(result)
+      }
+
+      proc.stdout.on('data', (d: Buffer) => { out += d.toString() })
+      proc.on('error', () => done(null))
+
+      // Kill after 2s — gemini hangs after printing version. After kill,
+      // the close event fires and we extract the version from buffered stdout.
+      const timer = setTimeout(() => proc.kill(), 2000)
+
+      proc.on('close', () => {
+        clearTimeout(timer)
+        const line = out.split('\n').map((l) => l.trim()).find((l) => l.length > 0)
+        done(line ?? null)
+      })
+    })
   }
 }
 
