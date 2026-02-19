@@ -95,4 +95,4 @@ npm run build:packages
 
 ## License
 
-MIT
+MIT License
