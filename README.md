@@ -1,105 +1,98 @@
-# Pi Builder 🚀
+# Pi Builder
 
-**Beautiful, open-source, unrestricted multi-platform AI code builder.**
+**Unified CLI agent orchestration layer for coding tasks**
 
-A modern replacement for Auto Maker with zero license restrictions. Build apps for web, desktop (Electron/Tauri), mobile (React Native), and CLI—all from one codebase.
+## What It Does
 
-## Features
+Pi Builder routes coding tasks to any installed CLI agent (Claude Code, Aider, OpenCode, etc.) with capability-based routing, health caching, and automatic fallback. It provides a WebSocket gateway, streaming execution, and a single-file web UI—no framework overhead.
 
-- ✨ **Web UI** - Browser-based code generation and automation
-- 🖥️ **Desktop** - Native apps via Electron & Tauri
-- 📱 **Mobile** - React Native support (iOS/Android)
-- 🔧 **CLI** - Command-line code generation tool
-- 🤖 **AI-Powered** - Claude integration for intelligent code generation
-- 📦 **Multi-Platform** - Single source, compile to any platform
-- 🔓 **MIT License** - No restrictions on commercial use, monetization, or deployment
-
-## Get Started
+## Quick Start
 
 ```bash
-# Clone and install
-git clone https://github.com/yourusername/pi-builder.git
-cd pi-builder
-npm install
+# Option 1: Install globally
+npm install -g @pi-builder/cli
 
-# Development
-npm run dev:web      # Start web UI dev server
-npm run dev:desktop  # Start desktop dev
-npm run dev:cli      # CLI development
+# Option 2: Clone and install
+git clone https://github.com/arosstale/pi-builder.git && cd pi-builder && bun install
 
-# Production
-npm run build
+# Start the gateway
+pi-builder start
 ```
+
+## Supported Agents
+
+| Agent | Binary | Key Capabilities |
+|-------|--------|-----------------|
+| Claude Code | `claude` | code-generation, refactoring, testing, explanation |
+| Aider | `aider` | pair-programming, refactoring, testing, git-aware |
+| OpenCode | `opencode` | code-generation, multi-provider, lsp-aware |
+| Codex CLI | `codex` | code-generation, command-execution, repo-tasks |
+| Gemini CLI | `gemini` | code-generation, research, large-context |
+| Goose | `goose` | code-generation, execution, testing, mcp |
+| Plandex | `plandex` | plan-first, multi-file, structured-steps |
+| SWE-agent | `sweagent` | bug-fixing, issue-resolution, pr-tasks |
+| Crush | `crush` | code-generation, lsp-aware, multi-model |
+| gptme | `gptme` | code-generation, web-browsing, file-management |
 
 ## Architecture
 
 ```
-pi-builder/
-├── packages/
-│   ├── @pi-builder/core       # Core engine
-│   ├── @pi-builder/types      # Shared types
-│   ├── @pi-builder/prompts    # AI prompts
-│   └── @pi-builder/utils      # Utilities
-├── apps/
-│   ├── web/                   # Next.js/React web UI
-│   ├── desktop/               # Electron + Tauri desktop
-│   ├── mobile/                # React Native
-│   └── cli/                   # Node.js CLI tool
-└── scripts/
-    └── dev.mjs                # Dev orchestration
+┌─────────────┐
+│   Web UI    │  apps/web/pi-builder-ui.html (single-file, no build)
+│  (Browser)  │
+└──────┬──────┘
+       │ WebSocket (port 18900)
+       ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  PiBuilderGateway  (packages/core/src/server/)                  │
+│  ├─ WebSocket Server                                            │
+│  └─ OrchestratorService + EventEmitter streaming                │
+└──────┬──────────────────────────────────────────────────────────┘
+       ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  WrapperOrchestrator  (packages/core/src/integrations/)         │
+│  ├─ Health check (30s TTL via --version)                        │
+│  ├─ Capability-based routing                                    │
+│  ├─ Fallback (try next best on failure)                         │
+│  └─ SQLite persistence (better-sqlite3)                         │
+└──────┬──────────────────────────────────────────────────────────┘
+       ↓
+  [claude|aider|opencode|codex|gemini|goose|plandex|swe-agent|crush|gptme]
 ```
 
-## Why Pi Builder?
+## CLI Reference
 
-| Feature | Auto Maker | Pi Builder |
-|---------|-----------|-----------|
-| **License** | Custom (restrictive) | MIT (unrestricted) |
-| **Monetization** | Requires Core Contributor vote | ✅ Free to monetize |
-| **Hosting/SaaS** | Not allowed | ✅ Deploy anywhere |
-| **Forks/Derivatives** | Limited | ✅ Full freedom |
-| **Commercial Use** | Restricted | ✅ Unrestricted |
-| **Multi-Platform** | Electron only | Web + Desktop + Mobile + CLI |
+```bash
+# Start gateway + show available agents
+pi-builder start
 
-## Development Workflow
+# Health check all 10 agents
+pi-builder agents
+
+# One-shot prompt to best available agent
+pi-builder run "add unit tests to src/utils.ts"
+```
+
+## Web UI
+
+After running `pi-builder start`, open `apps/web/pi-builder-ui.html` in your browser. The gateway runs on `ws://127.0.0.1:18900` by default. No build step required.
+
+## Development
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
-# Build shared packages
+# Run tests
+npx vitest run packages/core
+
+# Type check
+npx tsc --noEmit
+
+# Build packages
 npm run build:packages
-
-# Watch mode (all platforms)
-npm run dev
-
-# Individual platform development
-npm run dev:web      # Port 3000
-npm run dev:desktop  # Electron dev
-npm run dev:cli      # Node dev
-
-# Testing
-npm run test
-npm test:watch
-
-# Linting
-npm run lint
-npm run lint:fix
-
-# Type checking
-npm run typecheck
 ```
-
-## Project Status
-
-- 🚧 **Phase 1**: Core architecture & package setup
-- 🚧 **Phase 2**: Web UI foundation
-- 🚧 **Phase 3**: Desktop & mobile apps
-- 🚧 **Phase 4**: AI integration & automation
 
 ## License
 
-MIT License - Use freely for any purpose, including commercial projects.
-
----
-
-**Built with 💜 by Artale** - No restrictions, full freedom.
+MIT
