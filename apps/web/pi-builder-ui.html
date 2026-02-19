@@ -604,14 +604,25 @@ function flashLastUsed(agentId) {
 }
 
 function renderHealth(agents) {
-  const el = document.getElementById('agent-list')
   if (!agents) return
+
+  // Sidebar: show all agents with health dot
+  const el = document.getElementById('agent-list')
   el.innerHTML = Object.entries(agents).map(([id, ok]) =>
     `<div class="agent-row ${ok ? 'ok' : 'fail'}">
       <div class="dot"></div>
       <span>${escHtml(id)}</span>
     </div>`
   ).join('')
+
+  // Pill bar: dim pills for unhealthy agents; don't touch active/last-used state
+  const bar = document.getElementById('agent-bar')
+  if (!bar.classList.contains('visible')) return
+  bar.querySelectorAll('.agent-pill[data-agent-id]').forEach(p => {
+    const ok = agents[p.dataset.agentId]
+    p.style.opacity = ok === false ? '0.35' : ''
+    p.title = ok === false ? `${p.dataset.agentId} — not available` : (p.dataset.agentId ?? '')
+  })
 }
 
 // ── Send ───────────────────────────────────────────────────────────────────

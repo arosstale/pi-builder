@@ -179,7 +179,7 @@ export abstract class BaseAgentWrapper extends EventEmitter implements AgentWrap
 
   async version(): Promise<string | null> {
     try {
-      const { stdout } = await execFileAsync(this.binary, ['--version'], { timeout: 5000 })
+      const { stdout } = await execFileAsync(this.binary, ['--version'], { timeout: 3000 })
       return stdout.trim()
     } catch {
       return null
