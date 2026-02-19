@@ -69,13 +69,33 @@ program
 
 program
   .command('agents')
-  .description('List installed CLI coding agents')
-  .action(async () => {
-    console.log('🔍 Checking installed agents...\n')
+  .description('List installed CLI coding agents and their health')
+  .option('--json', 'Output as JSON')
+  .action(async (options: { json?: boolean }) => {
     const orch = createOrchestrator({ fallback: true })
+    const wrappers = orch.getWrappers()
+
+    if (!options.json) console.log('🔍 Checking installed agents...\n')
+
     const health = await orch.checkHealth()
-    for (const [id, ok] of Object.entries(health)) {
-      console.log(`${ok ? '✅' : '❌'}  ${id}`)
+    const results = wrappers.map((w) => ({
+      id: w.id,
+      name: w.name,
+      binary: w.binary,
+      capabilities: w.capabilities,
+      available: health[w.id] ?? false,
+    }))
+
+    if (options.json) {
+      console.log(JSON.stringify(results, null, 2))
+    } else {
+      for (const r of results) {
+        const icon = r.available ? '✅' : '❌'
+        const caps = r.capabilities.slice(0, 3).join(', ')
+        console.log(`${icon}  ${r.id.padEnd(12)} ${caps}`)
+      }
+      const available = results.filter(r => r.available).length
+      console.log(`\n${available}/${results.length} agents available`)
     }
     process.exit(0)
   })
