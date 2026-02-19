@@ -37,4 +37,5 @@ Thumbs.db
 *.log
 temp/
 tmp/
-.gitignore test-state/
+test-state/
+pnpm-lock.yaml

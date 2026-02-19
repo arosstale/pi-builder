@@ -57,24 +57,6 @@ function resolveUiPath(): string {
   return candidates[0]
 }
 
-function serveHttp(req: IncomingMessage, res: ServerResponse): void {
-  const url = req.url ?? '/'
-  // Only serve GET /
-  if (req.method !== 'GET' || (url !== '/' && url !== '/index.html')) {
-    res.writeHead(404, { 'Content-Type': 'text/plain' })
-    res.end('Not found')
-    return
-  }
-  try {
-    const html = readFileSync(resolveUiPath())
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-    res.end(html)
-  } catch {
-    res.writeHead(503, { 'Content-Type': 'text/plain' })
-    res.end('Web UI not found — open apps/web/pi-builder-ui.html directly')
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -83,6 +65,9 @@ export interface GatewayConfig {
   port?: number
   host?: string
   orchestrator?: OrchestratorConfig
+  authToken?: string
+  /** @internal Disable 127.0.0.1/::1 bypass — used only in tests */
+  _trustLocalhost?: boolean
 }
 
 export interface ClientMessage {
@@ -113,9 +98,67 @@ export class PiBuilderGateway {
       host: '127.0.0.1',
       ...config,
     }
-    this.httpServer = createServer(serveHttp)
+    this.httpServer = createServer((req, res) => this.handleHttp(req, res))
     this.wss = new WebSocketServer({ server: this.httpServer })
-    this.wss.on('connection', (ws) => this.onConnection(ws))
+    this.wss.on('connection', (ws, req) => this.onConnection(ws, req))
+  }
+
+  // ---------------------------------------------------------------------------
+  // Auth helpers
+  // ---------------------------------------------------------------------------
+
+  private isLocalhost(req: IncomingMessage): boolean {
+    if (this.config._trustLocalhost === false) return false
+    const ip = req.socket?.remoteAddress ?? ''
+    return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
+  }
+
+  private isAuthorizedHttp(req: IncomingMessage): boolean {
+    if (!this.config.authToken) return true
+    if (this.isLocalhost(req)) return true
+    const auth = req.headers['authorization'] ?? ''
+    return auth === `Bearer ${this.config.authToken}`
+  }
+
+  private isAuthorizedWs(req: IncomingMessage): boolean {
+    if (!this.config.authToken) return true
+    if (this.isLocalhost(req)) return true
+    const auth = req.headers['authorization'] ?? ''
+    if (auth === `Bearer ${this.config.authToken}`) return true
+    const url = req.url ?? ''
+    const qi = url.indexOf('?')
+    if (qi !== -1) {
+      const params = new URLSearchParams(url.slice(qi + 1))
+      if (params.get('token') === this.config.authToken) return true
+    }
+    return false
+  }
+
+  // ---------------------------------------------------------------------------
+  // HTTP handler
+  // ---------------------------------------------------------------------------
+
+  private handleHttp(req: IncomingMessage, res: ServerResponse): void {
+    if (!this.isAuthorizedHttp(req)) {
+      res.writeHead(401, { 'Content-Type': 'text/plain' })
+      res.end('Unauthorized')
+      return
+    }
+    const url = req.url ?? '/'
+    // Only serve GET /
+    if (req.method !== 'GET' || (url !== '/' && url !== '/index.html')) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' })
+      res.end('Not found')
+      return
+    }
+    try {
+      const html = readFileSync(resolveUiPath())
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      res.end(html)
+    } catch {
+      res.writeHead(503, { 'Content-Type': 'text/plain' })
+      res.end('Web UI not found — open apps/web/pi-builder-ui.html directly')
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -167,7 +210,11 @@ export class PiBuilderGateway {
   // Connection handler
   // ---------------------------------------------------------------------------
 
-  private onConnection(ws: WebSocket): void {
+  private onConnection(ws: WebSocket, req: IncomingMessage): void {
+    if (!this.isAuthorizedWs(req)) {
+      ws.close(4001, 'Unauthorized')
+      return
+    }
     this.clients.add(ws)
     console.log(`📡 Client connected (${this.clients.size} total)`)
 
