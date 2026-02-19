@@ -69,7 +69,8 @@ export class OpenHandsProvider extends EventEmitter {
       this.states.set(task.id, state)
       this.emit('task:complete', state)
 
-      return state
+      // Return a snapshot so the caller's reference isn't mutated by continueTask
+      return { ...state, actions: [...state.actions] }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 

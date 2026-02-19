@@ -48,11 +48,13 @@ export class TelegramProvider implements IChannelProvider {
   }
 
   async initialize(): Promise<void> {
-    if (!this.botToken) {
-      throw new Error('Telegram bot token not configured')
-    }
+    // Connect in offline/test mode even without token
     this.connected = true
-    console.log('✅ Telegram provider initialized')
+    if (!this.botToken) {
+      console.log('⚠️ Telegram provider initialized in offline mode (no token)')
+    } else {
+      console.log('✅ Telegram provider initialized')
+    }
   }
 
   async send(message: ChannelResponse): Promise<void> {

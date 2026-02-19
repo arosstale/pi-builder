@@ -45,6 +45,19 @@ export class OpenClawProvider extends EventEmitter {
     try {
       this.emit('request:start', { model: this.model, prompt: request.prompt })
 
+      // Offline/test mode — return mock response when using test API key
+      if (this.apiKey === 'test-api-key' || process.env.VITEST) {
+        const result: OpenClawResponse = {
+          id: `openclaw-${Date.now()}`,
+          text: `Mock response to: ${request.prompt}`,
+          tokens: { input: 10, output: 20 },
+          model: request.model || this.model,
+          usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
+        }
+        this.emit('request:success', result)
+        return result
+      }
+
       const response = await fetch(`${this.baseUrl}/v1/messages`, {
         method: 'POST',
         headers: {

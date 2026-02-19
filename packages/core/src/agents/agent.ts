@@ -25,10 +25,14 @@ export interface AgentHealth {
 export interface TaskResult {
   success: boolean
   data?: unknown
-  error?: Error
-  latency: number // in milliseconds
+  error?: Error | string
+  latency?: number // in milliseconds
   cost?: number // in dollars
   metadata?: Record<string, unknown>
+  // Extended fields used by sandboxed and other agents
+  taskId?: string
+  output?: unknown
+  executionTime?: number
 }
 
 /**
@@ -158,7 +162,22 @@ export abstract class BaseAgent implements IAgent {
   protected errorCount: number = 0
   protected totalLatency: number = 0
 
-  constructor(config: AgentConfig) {
+  constructor(configOrId: AgentConfig | string, name?: string) {
+    // Support both (AgentConfig) and (id: string, name?: string) call signatures
+    let config: AgentConfig
+    if (typeof configOrId === 'string') {
+      config = {
+        id: configOrId,
+        type: 'custom' as AgentType,
+        name: name ?? configOrId,
+        version: '1.0.0',
+        enabled: true,
+        capabilities: [],
+      }
+    } else {
+      config = configOrId
+    }
+
     if (!config.id || !config.type || !config.name) {
       throw new Error('Agent config must include id, type, and name')
     }

@@ -37,3 +37,4 @@ Thumbs.db
 *.log
 temp/
 tmp/
+.gitignore test-state/

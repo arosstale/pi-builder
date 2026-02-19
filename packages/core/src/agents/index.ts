@@ -12,9 +12,9 @@ export * from './agent-registry'
 export * from './advanced-routing'
 export { AgentLogger } from './logger'
 
-// Phase 1A: New agent system
-export { BaseAgent, Task, TaskResult, ExecutionPlan } from './base-agent'
-export { ClaudeAgent } from './claude-agent'
+// Phase 1A: SimpleBaseAgent avoids collision with agent.ts BaseAgent
+export { BaseAgent as SimpleBaseAgent, Task as SimpleTask, TaskResult as SimpleTaskResult, ExecutionPlan } from './base-agent'
+// ClaudeAgent exported via provider-agents above
 export { agentRegistry } from './agent-registry'
 
 // Phase 12: Specialist Routing

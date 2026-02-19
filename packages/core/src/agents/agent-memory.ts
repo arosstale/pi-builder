@@ -116,7 +116,7 @@ export class AgentMemory {
 
     this.analytics.averageLatency =
       (this.analytics.averageLatency * (this.analytics.totalEntries - 1) +
-        result.latency) /
+        (result.latency ?? 0)) /
       this.analytics.totalEntries
 
     if (result.cost) {
@@ -388,7 +388,7 @@ export class AgentMemory {
   private getAvgLatencyForTaskType(taskType: string): number {
     const entries = this.query({ task: { type: taskType } as any })
     if (entries.length === 0) return 0
-    return entries.reduce((sum, e) => sum + e.result.latency, 0) / entries.length
+    return entries.reduce((sum, e) => sum + (e.result.latency ?? 0), 0) / entries.length
   }
 
   private getTotalCostForTaskType(taskType: string): number {

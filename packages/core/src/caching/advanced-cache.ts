@@ -24,6 +24,7 @@ export class AdvancedCache<T> {
   private defaultTTL: number
   private evictionPolicy: CacheEvictionPolicy
   private accessTimes: number[] = []
+  private accessCounter = 0
 
   constructor(maxSize: number = 1000, defaultTTL: number = 3600000, evictionPolicy: CacheEvictionPolicy = 'LRU') {
     this.maxSize = maxSize
@@ -53,7 +54,7 @@ export class AdvancedCache<T> {
     // Update access info
     const startTime = now
     entry.accessCount++
-    entry.lastAccessed = new Date()
+    entry.lastAccessed = new Date(Date.now() + ++this.accessCounter)
     this.stats.hits++
     this.stats.totalAccessTime += Date.now() - startTime
     this.stats.accessCount++

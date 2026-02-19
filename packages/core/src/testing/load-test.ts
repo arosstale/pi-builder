@@ -95,7 +95,7 @@ export class LoadTestRunner {
       }
 
       // Calculate requests for this cycle
-      const requestsThisCycle = Math.ceil(currentRPS / 10) // 10 cycles per second
+      const requestsThisCycle = Math.max(2, Math.ceil(currentRPS / 10)) // min 2 per cycle
 
       // Execute requests
       const promises: Promise<void>[] = []
@@ -111,7 +111,7 @@ export class LoadTestRunner {
               successfulRequests++
             } catch (error) {
               failedRequests++
-              const errorType = error instanceof Error ? error.name : 'Unknown'
+              const errorType = error instanceof Error ? error.constructor.name : 'Unknown'
               errors.set(errorType, (errors.get(errorType) || 0) + 1)
             }
           })()
@@ -125,12 +125,11 @@ export class LoadTestRunner {
       const currentMemory = process.memoryUsage().heapUsed / 1024 / 1024
       peakMemory = Math.max(peakMemory, currentMemory)
 
-      // Sleep to maintain RPS
+      // Sleep to maintain RPS (minimum 10ms sleep to avoid busy-loop)
       const cycleElapsed = Date.now() - cycleStart
-      const cycleTarget = (requestsThisCycle / currentRPS) * 1000
-      if (cycleElapsed < cycleTarget) {
-        await new Promise((resolve) => setTimeout(resolve, cycleTarget - cycleElapsed))
-      }
+      const cycleTarget = 10 // 10ms per cycle = 100 cycles/sec
+      const sleepMs = Math.max(1, cycleTarget - cycleElapsed)
+      await new Promise((resolve) => setTimeout(resolve, sleepMs))
 
       // Log progress
       const progress = Math.round(((Date.now() - startTime.getTime()) / config.duration) * 100)

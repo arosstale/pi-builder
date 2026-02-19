@@ -1,4 +1,5 @@
 import express, { Express, Request, Response, NextFunction } from 'express'
+import { EventEmitter } from 'events'
 import { ApplicationGenerator, ApplicationSpec } from '../generators/application-generator'
 import { StitchCoordinator } from '../coordinators/stitch-coordinator'
 import { agentRegistry } from '../agents/agent-registry'
@@ -6,8 +7,14 @@ import { agentRegistry } from '../agents/agent-registry'
 export interface APIConfig {
   port: number
   host: string
-  environment: 'development' | 'production' | 'test'
+  environment?: 'development' | 'production' | 'test'
+  cors?: boolean
+  compression?: boolean
+  rateLimit?: { windowMs: number; maxRequests: number }
 }
+
+// Alias for backward compatibility
+export type ApiConfig = APIConfig
 
 export interface GenerateRequest {
   spec: ApplicationSpec
@@ -21,13 +28,14 @@ export interface APIResponse<T> {
   timestamp: string
 }
 
-export class RestAPI {
+export class RestAPI extends EventEmitter {
   private app: Express
   private appGen: ApplicationGenerator
   private stitch: StitchCoordinator
   private config: APIConfig
 
   constructor(config: APIConfig) {
+    super()
     this.config = config
     this.app = express()
     this.appGen = new ApplicationGenerator()
@@ -166,12 +174,13 @@ export class RestAPI {
     // Get agent info
     this.app.get('/api/v1/agents/:name', (req: Request, res: Response) => {
       try {
-        const agent = agentRegistry.getAgent(String(req.params.name))
+        const agent = agentRegistry.findAgent(String(req.params.name))
+        if (!agent) throw new Error(`Agent not found: ${req.params.name}`)
         res.json({
           success: true,
           data: {
             name: req.params.name,
-            type: agent.constructor.name
+            type: (agent as { constructor: { name: string } }).constructor.name
           },
           timestamp: new Date().toISOString()
         })

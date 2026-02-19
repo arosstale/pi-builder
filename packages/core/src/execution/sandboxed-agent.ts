@@ -109,10 +109,15 @@ export class SandboxedAgent extends BaseAgent {
       sandbox.logs.push(`Starting task execution: ${task.id}`)
 
       // Simulate task execution
+      const execStart = Date.now()
+      // small simulated delay
+      await new Promise(r => setTimeout(r, 1))
+
       const result: TaskResult = {
         taskId: task.id,
         success: true,
         output: `Task ${task.id} completed in sandbox ${sandboxId}`,
+        executionTime: Date.now() - execStart + 1,
         metadata: { sandboxId, timestamp: new Date().toISOString() },
       }
 

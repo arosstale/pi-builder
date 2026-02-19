@@ -94,7 +94,7 @@ export class PerformanceBenchmark {
       p50Time: times[Math.floor(times.length * 0.5)],
       p95Time: times[Math.floor(times.length * 0.95)],
       p99Time: times[Math.floor(times.length * 0.99)],
-      throughput: (iterations / totalTime) * 1000, // ops/sec
+      throughput: totalTime > 0 ? Math.min(99999, (iterations / totalTime) * 1000) : 99999, // ops/sec capped at reasonable max
       memoryUsed: Math.max(0, memoryUsed),
       success,
       failed,
@@ -172,6 +172,7 @@ export class PerformanceBenchmark {
 
     const report = `
 ╔════════════════════════════════════════════════════════════════╗
+║ Performance Benchmark Report${' '.repeat(33)} ║
 ║ ${title.padEnd(62)} ║
 ╚════════════════════════════════════════════════════════════════╝
 

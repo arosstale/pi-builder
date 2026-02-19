@@ -12,6 +12,7 @@ export interface TaskResult {
   success: boolean
   output?: string
   error?: string
+  executionTime?: number
   metadata?: Record<string, any>
 }
 

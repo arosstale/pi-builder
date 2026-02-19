@@ -50,3 +50,4 @@ export {
   PhoneProvider,
 } from './multi-channel-router'
 export type { Channel, ChannelMessage, ChannelResponse, IChannelProvider } from './multi-channel-router'
+export { OpenCodeSDKIntegration, type OpenCodeSDKConfig, type CodeAnalysisResult, type OpenCodeGenerateResult } from './openclaw'

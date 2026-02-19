@@ -4,17 +4,9 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import {
-  CodexAgent,
-  CodexProvider,
-  OllamaAgent,
-  OllamaProvider,
-  LMStudioAgent,
-  LMStudioProvider,
-  type CodexConfig,
-  type OllamaConfig,
-  type LMStudioConfig
-} from '../src/integrations'
+import { CodexProvider, type CodexConfig } from '../src/integrations/codex-provider'
+import { OllamaProvider, type OllamaConfig } from '../src/integrations/ollama-provider'
+import { LMStudioProvider, type LMStudioConfig } from '../src/integrations/lm-studio-provider'
 
 describe('Provider Integrations', () => {
   describe('Codex Provider', () => {

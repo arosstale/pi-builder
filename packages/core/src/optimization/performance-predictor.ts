@@ -86,7 +86,7 @@ export class PerformancePredictor {
 
     // Adjust for task complexity
     const complexityFactor =
-      (task.context?.complexity as number) || 1.0
+      (task.metadata?.complexity as number) || 1.0
 
     const predicted = mean * complexityFactor
     const confidence = Math.min(0.95, 0.3 + history.length * 0.1)
@@ -155,7 +155,7 @@ export class PerformancePredictor {
   async predictSuccessRate(task: Task): Promise<number> {
     // Estimate based on task type and complexity
     const taskType = task.type
-    const complexity = (task.context?.complexity as number) || 1.0
+    const complexity = (task.metadata?.complexity as number) || 1.0
     const history = this.history.get(taskType) || []
 
     if (history.length < this.minDataPoints) {

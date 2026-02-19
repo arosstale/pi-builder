@@ -1,3 +1,4 @@
+import { EventEmitter } from 'events'
 import { ApplicationGenerator, ApplicationSpec } from '../generators/application-generator'
 import { StitchCoordinator } from '../coordinators/stitch-coordinator'
 
@@ -111,18 +112,41 @@ export const graphqlTypeDefs = `
   }
 `
 
-export class GraphQLAPI {
+export class GraphQLAPI extends EventEmitter {
   private schema: GraphQLSchema
   private appGen: ApplicationGenerator
   private stitch: StitchCoordinator
+  private queryCache: Map<string, unknown> = new Map()
 
   constructor() {
+    super()
     this.appGen = new ApplicationGenerator()
     this.stitch = new StitchCoordinator()
     this.schema = {
       typeDefs: graphqlTypeDefs,
       resolvers: {}
     }
+  }
+
+  async query(opts: { query: string; variables?: Record<string, unknown> }): Promise<unknown> {
+    const cacheKey = opts.query + JSON.stringify(opts.variables ?? {})
+    if (this.queryCache.has(cacheKey)) {
+      return this.queryCache.get(cacheKey)
+    }
+    // Simple mock executor
+    const result = { data: { _query: opts.query }, errors: null }
+    this.queryCache.set(cacheKey, result)
+    this.emit('query:executed', { query: opts.query })
+    return result
+  }
+
+  clearCache(): void {
+    this.queryCache.clear()
+    this.emit('cache:cleared')
+  }
+
+  getCacheSize(): number {
+    return this.queryCache.size
   }
 
   public getResolvers() {

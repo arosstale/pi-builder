@@ -119,7 +119,7 @@ export class AdvancedMonitor {
     } else {
       // Lower is better
       if (value <= threshold) return 'healthy'
-      if (value <= threshold * 1.1) return 'warning'
+      if (value <= threshold * 2) return 'warning'  // within 2x threshold = warning
       return 'critical'
     }
   }

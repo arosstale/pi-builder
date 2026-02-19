@@ -154,11 +154,12 @@ export class AntfarmOrchestrator {
    */
   private async executeTask(workerTask: WorkerTask): Promise<TaskResult> {
     try {
-      const agent = agentRegistry.getAgent(workerTask.agentName)
+      const agent = agentRegistry.findAgent(workerTask.agentName)
+      if (!agent) throw new Error(`Agent not found: ${workerTask.agentName}`)
       console.log(`🚀 Antfarm: Executing task ${workerTask.id} with agent ${workerTask.agentName}`)
 
       const result = await Promise.race([
-        agent.execute(workerTask.task),
+        (agent as unknown as { execute: (t: unknown) => Promise<TaskResult> }).execute(workerTask.task),
         new Promise<TaskResult>((_, reject) =>
           setTimeout(() => reject(new Error('Task timeout')), this.config.taskTimeout)
         )

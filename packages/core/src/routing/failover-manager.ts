@@ -161,8 +161,11 @@ export class FailoverManager {
     state.consecutiveSuccesses++
     state.consecutiveFailures = 0
 
-    // Attempt recovery if degraded
-    if (state.status === 'degraded' && state.consecutiveSuccesses >= this.config.recoveryThreshold) {
+    // Attempt recovery if degraded or offline
+    if (
+      (state.status === 'degraded' || state.status === 'offline') &&
+      state.consecutiveSuccesses >= this.config.recoveryThreshold
+    ) {
       this.recoverProvider(provider)
     }
 

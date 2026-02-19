@@ -392,7 +392,7 @@ export class AgentOrchestrator {
     let bestResult: TaskResult | undefined
     if (successfulResults.length > 0) {
       bestResult = successfulResults.reduce((best, current) =>
-        current.latency < best.latency ? current : best
+        (current.latency ?? 0) < (best.latency ?? 0) ? current : best
       )
     }
 

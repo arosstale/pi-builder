@@ -102,7 +102,7 @@ export class AdaptiveOptimizer {
       const avgLatency =
         results.reduce((sum, r) => sum + ((r.metadata?.latency as number) || 0), 0) / results.length
       const avgCost =
-        results.reduce((sum, r) => sum + ((r.metadata?.cost as number) || 0), 0) / results.length
+        results.reduce((sum, r) => sum + ((r.cost as number) || (r.metadata?.cost as number) || 0), 0) / results.length
       const successRate = successful.length / results.length
 
       const pattern: UsagePattern = {

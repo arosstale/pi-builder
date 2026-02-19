@@ -4,7 +4,7 @@
  * Integrates with Pi-Builder agents for continuous learning
  */
 
-import { BaseAgent, TaskResult } from '../agents'
+import { SimpleBaseAgent as BaseAgent, SimpleTaskResult as TaskResult } from '../agents'
 import { RAGKnowledgeBase } from '../knowledge/rag-knowledge-base'
 
 export type Agent = BaseAgent

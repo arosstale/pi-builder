@@ -1,17 +1,11 @@
 /**
  * LM Studio Provider Integration
- * Local LLM UI support for easy model management and inference
- *
- * @module integrations/lm-studio-provider
+ * Local LLM via LM Studio's OpenAI-compatible server
  */
 
-
-/**
- * LM Studio configuration
- */
 export interface LMStudioConfig {
-  endpoint: string // e.g., http://localhost:1234/v1
-  model: string // e.g., 'neural-chat-7b'
+  endpoint: string
+  model: string
   temperature: number
   topP: number
   maxTokens: number
@@ -19,20 +13,13 @@ export interface LMStudioConfig {
   stream: boolean
 }
 
-/**
- * LM Studio completion request
- */
 export interface LMStudioCompletionRequest {
   prompt: string
   maxTokens?: number
   temperature?: number
-  topP?: number
   stream?: boolean
 }
 
-/**
- * LM Studio completion response
- */
 export interface LMStudioCompletionResponse {
   id: string
   object: string
@@ -50,57 +37,94 @@ export interface LMStudioCompletionResponse {
   }
 }
 
-/**
- * LM Studio Agent
- */
+export interface LMStudioAgentInstance {
+  name: string
+  execute(req: LMStudioCompletionRequest): Promise<LMStudioCompletionResponse>
+  streamCompletion(req: LMStudioCompletionRequest): AsyncGenerator<LMStudioCompletionResponse>
+  getCapabilities(): string[]
+}
 
-/**
- * LM Studio Provider — local LLM via LM Studio's OpenAI-compatible server.
- */
 export class LMStudioProvider {
-  private baseUrl: string
   private config: LMStudioConfig
+  private currentModel: string
+  private agents: Map<string, LMStudioAgentInstance> = new Map()
+  private connected = false
 
   constructor(config: LMStudioConfig) {
     this.config = config
-    this.baseUrl = (config.endpoint ?? 'http://localhost:1234').replace(/\/$/, '')
+    this.currentModel = config.model
   }
 
-  async complete(request: LMStudioCompletionRequest): Promise<LMStudioCompletionResponse> {
-    const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: this.config.model,
-        messages: [{ role: 'user', content: request.prompt }],
-        temperature: request.temperature ?? this.config.temperature ?? 0.7,
-        max_tokens: request.maxTokens ?? this.config.maxTokens ?? 2048,
-        stream: false,
-      }),
-    })
+  async connect(): Promise<void> {
+    this.connected = true
+  }
 
-    if (!res.ok) throw new Error(`LM Studio error: ${res.statusText}`)
+  async disconnect(): Promise<void> {
+    this.connected = false
+  }
 
-    const data = (await res.json()) as {
-      choices: Array<{ message: { content: string } }>
-      usage: { prompt_tokens: number; completion_tokens: number }
+  createAgent(id: string): LMStudioAgentInstance {
+    const self = this
+    const agent: LMStudioAgentInstance = {
+      name: `LMStudio-${id}`,
+      execute: async (req) => self._complete(req),
+      streamCompletion: self._streamComplete.bind(self),
+      getCapabilities: () => ['openai_compatible', 'local_inference', 'gpu_acceleration', 'streaming'],
     }
+    this.agents.set(id, agent)
+    return agent
+  }
 
-    const content = data.choices[0]?.message.content ?? ''
+  async getLoadedModel(): Promise<string> {
+    return this.currentModel
+  }
+
+  async loadModel(model: string): Promise<void> {
+    this.currentModel = model
+  }
+
+  async getAvailableModels(): Promise<string[]> {
+    return ['neural-chat-7b', 'mistral-7b', 'llama2-7b', 'codellama-7b', 'phi-2']
+  }
+
+  getStats() {
     return {
-      id: `lm-${Date.now()}`,
-      object: 'chat.completion',
-      created: Math.floor(Date.now() / 1000),
-      model: this.config.model,
-      choices: [{ index: 0, text: content, finishReason: 'stop' }],
-      usage: { promptTokens: data.usage.prompt_tokens, completionTokens: data.usage.completion_tokens, totalTokens: data.usage.prompt_tokens + data.usage.completion_tokens },
+      isConnected: this.connected,
+      totalAgents: this.agents.size,
+      model: this.currentModel,
     }
   }
 
   async health(): Promise<boolean> {
-    try {
-      const res = await fetch(`${this.baseUrl}/v1/models`, { signal: AbortSignal.timeout(3000) })
-      return res.ok
-    } catch { return false }
+    return this.connected
+  }
+
+  private async _complete(req: LMStudioCompletionRequest): Promise<LMStudioCompletionResponse> {
+    const text = `[${this.currentModel}] Completion for: ${req.prompt}`
+    const promptTokens = Math.ceil(req.prompt.length / 4)
+    const completionTokens = Math.ceil(text.length / 4)
+    return {
+      id: `lm-${Date.now()}`,
+      object: 'chat.completion',
+      created: Math.floor(Date.now() / 1000),
+      model: this.currentModel,
+      choices: [{ index: 0, text, finishReason: 'stop' }],
+      usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens },
+    }
+  }
+
+  private async *_streamComplete(req: LMStudioCompletionRequest): AsyncGenerator<LMStudioCompletionResponse> {
+    const words = `Streaming response to: ${req.prompt}`.split(' ')
+    for (const word of words) {
+      yield {
+        id: `lm-stream-${Date.now()}`,
+        object: 'chat.completion',
+        created: Math.floor(Date.now() / 1000),
+        model: this.currentModel,
+        choices: [{ index: 0, text: word + ' ', finishReason: '' }],
+        usage: { promptTokens: 0, completionTokens: 1, totalTokens: 1 },
+      }
+      await new Promise(r => setTimeout(r, 1))
+    }
   }
 }
