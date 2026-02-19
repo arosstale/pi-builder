@@ -267,14 +267,49 @@ export class RAGKnowledgeBase {
       })
       .join('\n\n')
 
-    // In production: call LLM with context
-    // const response = await llm.generate({
-    //   prompt: `Using this context:\n${contextStr}\n\nAnswer: ${query.question}`,
-    //   temperature: 0.7
-    // })
+    // Generate answer via AI if an API key is available
+    let answer: string
+    const orKey = process.env.OPENROUTER_API_KEY
 
-    // Mock response
-    const answer = `Based on my knowledge base: ${contextStr}\n\nAnswer to "${query.question}": [Generated response using context above]`
+    if (orKey && !process.env.VITEST) {
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${orKey}`,
+            'HTTP-Referer': 'https://github.com/arosstale/pi-builder',
+            'X-Title': 'pi-builder',
+          },
+          body: JSON.stringify({
+            model: 'anthropic/claude-haiku-4-5',
+            max_tokens: 1024,
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a helpful assistant. Answer questions using only the provided context.',
+              },
+              {
+                role: 'user',
+                content: `Context:\n${contextStr}\n\nQuestion: ${query.question}`,
+              },
+            ],
+          }),
+        })
+
+        if (res.ok) {
+          const data = (await res.json()) as { choices: Array<{ message: { content: string } }> }
+          answer = data.choices[0]?.message?.content ?? `No answer generated for: "${query.question}"`
+        } else {
+          answer = `Based on my knowledge base:\n${contextStr}\n\nAnswer to "${query.question}": [API error ${res.status}]`
+        }
+      } catch {
+        answer = `Based on my knowledge base:\n${contextStr}\n\nAnswer to "${query.question}": [Network error]`
+      }
+    } else {
+      // Offline / test mode
+      answer = `Based on my knowledge base:\n${contextStr}\n\nAnswer to "${query.question}": [Set OPENROUTER_API_KEY for AI-generated answers]`
+    }
 
     return {
       answer,
