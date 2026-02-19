@@ -1,6 +1,75 @@
-import BetterSqlite3, { type Database as Sqlite3DB } from 'better-sqlite3'
+/**
+ * Database — SQLite backed via bun:sqlite (Bun) or better-sqlite3 (Node).
+ *
+ * The public API is unchanged; only the driver import is swapped based on runtime.
+ */
+
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
+
+// ---------------------------------------------------------------------------
+// Minimal driver shim so the rest of the file is runtime-agnostic
+// ---------------------------------------------------------------------------
+
+interface SqliteDB {
+  exec(sql: string): void
+  prepare(sql: string): SqliteStmt
+  close(): void
+}
+
+interface SqliteStmt {
+  run(...args: unknown[]): unknown
+  get(...args: unknown[]): unknown
+  all(...args: unknown[]): unknown[]
+}
+
+function openSqlite(filePath: string): SqliteDB {
+  // Bun exposes `Bun` global; prefer bun:sqlite there
+  if (typeof (globalThis as Record<string, unknown>).Bun !== 'undefined') {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Database } = require('bun:sqlite') as {
+      Database: new (path: string) => {
+        exec(sql: string): void
+        prepare(sql: string): {
+          run(...args: unknown[]): unknown
+          get(...args: unknown[]): unknown
+          all(...args: unknown[]): unknown[]
+        }
+        close(): void
+      }
+    }
+    const db = new Database(filePath)
+    db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
+    return db
+  }
+
+  // Node.js — try better-sqlite3 (optional dep)
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const BetterSqlite3 = require('better-sqlite3') as new (path: string) => {
+      pragma(s: string): unknown
+      exec(sql: string): void
+      prepare(sql: string): {
+        run(...args: unknown[]): unknown
+        get(...args: unknown[]): unknown
+        all(...args: unknown[]): unknown[]
+      }
+      close(): void
+    }
+    const db = new BetterSqlite3(filePath)
+    db.pragma('journal_mode = WAL')
+    db.pragma('foreign_keys = ON')
+    return db
+  } catch {
+    throw new Error(
+      'No SQLite driver available. In Bun, bun:sqlite is built-in. In Node, install better-sqlite3.'
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public types (unchanged)
+// ---------------------------------------------------------------------------
 
 export interface DatabaseConfig {
   provider: 'postgres' | 'mongodb' | 'sqlite'
@@ -71,7 +140,7 @@ function parseJSON<T>(s: string | null | undefined): T {
 
 export class Database {
   private config: DatabaseConfig
-  private sqlite: Sqlite3DB | null = null
+  private sqlite: SqliteDB | null = null
   private isConnected: boolean = false
 
   constructor(config: DatabaseConfig) {
@@ -88,11 +157,11 @@ export class Database {
     }
 
     const filePath = this.config.filePath ?? this.config.database
-    mkdirSync(dirname(filePath === ':memory:' ? '/tmp/x' : filePath), { recursive: true })
+    if (filePath !== ':memory:') {
+      mkdirSync(dirname(filePath), { recursive: true })
+    }
 
-    this.sqlite = new BetterSqlite3(filePath)
-    this.sqlite.pragma('journal_mode = WAL')
-    this.sqlite.pragma('foreign_keys = ON')
+    this.sqlite = openSqlite(filePath)
     this.createSchema()
     this.isConnected = true
     console.log(`✅ SQLite connected: ${filePath}`)
@@ -102,7 +171,6 @@ export class Database {
     this.sqlite?.close()
     this.sqlite = null
     this.isConnected = false
-    console.log('✅ Database disconnected')
   }
 
   isHealthy(): boolean {
@@ -180,7 +248,6 @@ export class Database {
         )
     }
 
-    console.log(`📝 Created application: ${id}`)
     return { id, ...record, createdAt: new Date(ts), updatedAt: new Date(ts) }
   }
 
@@ -218,7 +285,11 @@ export class Database {
     }
 
     const existing = await this.getApplication(id)
-    return existing ?? { id, name: '', description: '', spec: {}, generatedCode: { backend: '', frontend: '' }, createdAt: new Date(), updatedAt: new Date(ts), status: 'pending', ...updates }
+    return existing ?? {
+      id, name: '', description: '', spec: {},
+      generatedCode: { backend: '', frontend: '' },
+      createdAt: new Date(), updatedAt: new Date(ts), status: 'pending', ...updates
+    }
   }
 
   async listApplications(limit = 100, offset = 0): Promise<ApplicationRecord[]> {
@@ -265,7 +336,6 @@ export class Database {
         .run(id, record.email, record.passwordHash, record.role, ts, ts)
     }
 
-    console.log(`👤 Created user: ${id}`)
     return { id, ...record, createdAt: new Date(ts), updatedAt: new Date(ts) }
   }
 
@@ -332,7 +402,6 @@ export class Database {
         )
     }
 
-    console.log(`📌 Created task: ${id}`)
     return { id, ...record, createdAt: new Date(ts) }
   }
 

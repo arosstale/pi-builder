@@ -353,14 +353,12 @@ describe('Phases 13-16: Complete v2.0 Launch', () => {
       expect(stats.avg).toBe(175)
     })
 
-    it('should clear expired cache', (done) => {
+    it('should clear expired cache', async () => {
       performance.cacheSet('test-key', { value: 100 }, 0.001)
-      setTimeout(() => {
-        performance.clearExpiredCache()
-        const cached = performance.cacheGet('test-key')
-        expect(cached).toBeNull()
-        done()
-      }, 10)
+      await new Promise((r) => setTimeout(r, 10))
+      performance.clearExpiredCache()
+      const cached = performance.cacheGet('test-key')
+      expect(cached).toBeNull()
     })
 
     it('should generate performance report', () => {

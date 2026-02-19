@@ -33,7 +33,7 @@ export default defineConfig({
         '**/*.spec.ts',
       ],
     },
-    testMatch: ['**/__tests__/**/*.test.ts', '**/*.test.ts'],
-    exclude: ['node_modules', 'dist', '.idea', '.git', '.cache'],
+    testMatch: ['packages/**/__tests__/**/*.test.ts', 'packages/**/*.test.ts', 'apps/**/*.test.ts'],
+    exclude: ['node_modules', 'dist', '.idea', '.git', '.cache', '**/node_modules/**'],
   },
 })
