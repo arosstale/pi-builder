@@ -35,31 +35,49 @@ export interface RAGResponse {
 }
 
 /**
- * Simple Embedding Service (mock)
- * In production: use OpenAI embeddings, Cohere, or local models
+ * Embedding Service
+ * Uses OpenRouter (text-embedding-3-small) when OPENROUTER_API_KEY is set,
+ * falls back to a deterministic hash-based vector for offline/test use.
  */
 export class EmbeddingService {
-  /**
-   * Generate embedding for text
-   * Mock: returns simple hash-based vector
-   */
+  private readonly dims = 1536 // text-embedding-3-small output dims
+
   async embed(text: string): Promise<number[]> {
-    // In production: call actual embedding API
-    // const response = await openai.createEmbedding({
-    //   model: 'text-embedding-3-small',
-    //   input: text
-    // })
-    // return response.data[0].embedding
+    const orKey = process.env.OPENROUTER_API_KEY
+    if (orKey && !process.env.VITEST) {
+      return this.embedViaOpenRouter(text, orKey)
+    }
+    return this.hashEmbed(text)
+  }
 
-    // Mock embedding: simple hash-based approach
-    const vector = new Array(384).fill(0) // 384-dim vector like text-embedding-3-small
+  private async embedViaOpenRouter(text: string, apiKey: string): Promise<number[]> {
+    const res = await fetch('https://openrouter.ai/api/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://github.com/arosstale/pi-builder',
+        'X-Title': 'pi-builder',
+      },
+      body: JSON.stringify({ model: 'openai/text-embedding-3-small', input: text }),
+    })
 
-    for (let i = 0; i < text.length; i++) {
-      const charCode = text.charCodeAt(i)
-      vector[i % vector.length] += Math.sin(charCode * i) * 0.1
+    if (!res.ok) {
+      console.warn(`⚠️  Embedding API error ${res.status} — falling back to hash embedding`)
+      return this.hashEmbed(text)
     }
 
-    // Normalize
+    const data = (await res.json()) as { data: Array<{ embedding: number[] }> }
+    return data.data[0].embedding
+  }
+
+  /** Deterministic hash-based fallback (no API key required) */
+  private hashEmbed(text: string): number[] {
+    const vector = new Array(this.dims).fill(0)
+    for (let i = 0; i < text.length; i++) {
+      const charCode = text.charCodeAt(i)
+      vector[i % vector.length] += Math.sin(charCode * (i + 1)) * 0.1
+    }
     const norm = Math.sqrt(vector.reduce((sum, v) => sum + v * v, 0))
     return vector.map((v) => v / (norm || 1))
   }

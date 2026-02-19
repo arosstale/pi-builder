@@ -151,24 +151,45 @@ export class AuthenticationService {
   }
 
   /**
-   * Generate JWT token (mock)
+   * Generate a real HS256 JWT token.
+   * Set JWT_SECRET env var in production (falls back to a random per-process secret).
    */
   async generateToken(user: User, expiresIn: number = 86400): Promise<string> {
-    // In production: use jsonwebtoken library
-    const payload = JSON.stringify({
-      userId: user.id,
-      tenantId: user.tenantId,
-      role: user.role,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + expiresIn
-    })
+    const secret = process.env.JWT_SECRET ?? this.jwtSecret()
+    const b64url = (s: string) =>
+      Buffer.from(s).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
-    const signature = crypto
-      .createHmac('sha256', process.env.JWT_SECRET || 'secret-key')
-      .update(payload)
-      .digest('hex')
+    const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+    const now = Math.floor(Date.now() / 1000)
+    const payload = b64url(
+      JSON.stringify({
+        sub: user.id,
+        userId: user.id,
+        tenantId: user.tenantId,
+        role: user.role,
+        iat: now,
+        exp: now + expiresIn,
+      })
+    )
 
-    return `${Buffer.from(payload).toString('base64')}.${signature}`
+    const sig = crypto
+      .createHmac('sha256', secret)
+      .update(`${header}.${payload}`)
+      .digest('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
+
+    return `${header}.${payload}.${sig}`
+  }
+
+  private _jwtSecret?: string
+  private jwtSecret(): string {
+    if (!this._jwtSecret) {
+      this._jwtSecret = crypto.randomBytes(32).toString('hex')
+      console.warn('⚠️  JWT_SECRET not set — using random per-process secret (tokens will invalidate on restart)')
+    }
+    return this._jwtSecret
   }
 
   /**

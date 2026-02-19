@@ -67,7 +67,7 @@ describe('Phase 12 Track 5: SaaS Infrastructure', () => {
       const token = await authService.generateToken(user)
 
       expect(token).toBeDefined()
-      expect(token.split('.').length).toBe(2)
+      expect(token.split('.').length).toBe(3) // real HS256 JWT: header.payload.signature
     })
 
     it('should list users', async () => {
