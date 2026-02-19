@@ -23,11 +23,20 @@ export interface ExecutionPlan {
 }
 
 export abstract class BaseAgent {
+  public id: string
+  protected name: string
   protected logger: Logger
   protected model: string = 'claude-3-5-sonnet-20241022'
 
-  constructor(name: string) {
-    this.logger = new Logger(`Agent:${name}`)
+  constructor(idOrName: string, name?: string) {
+    if (name !== undefined) {
+      this.id = idOrName
+      this.name = name
+    } else {
+      this.id = idOrName
+      this.name = idOrName
+    }
+    this.logger = new Logger(`Agent:${this.name}`)
   }
 
   /**

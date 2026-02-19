@@ -17,12 +17,14 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@mariozechner/pi-coding-agent": "^0.53.0",
     "@pi-builder/types": "workspace:*",
     "@pi-builder/utils": "workspace:*",
     "express": "^4.21.0",
     "node-fetch": "^3.0.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "typescript": "^5.4.0",
     "vitest": "^1.4.0"
   }

@@ -115,11 +115,13 @@ export class SlackProvider implements IChannelProvider {
     if (message.buttons && message.buttons.length > 0) {
       blocks.push({
         type: 'actions',
-        elements: message.buttons.map((btn) => ({
+        text: { type: 'plain_text', text: 'Actions' },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...({ elements: message.buttons.map((btn: any) => ({
           type: 'button',
           text: { type: 'plain_text', text: btn.label },
           action_id: btn.action
-        }))
+        })) } as any)
       })
     }
 

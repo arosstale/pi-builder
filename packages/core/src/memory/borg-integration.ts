@@ -4,12 +4,13 @@
  * Integrates with Pi-Builder agents for continuous learning
  */
 
-import { BaseAgent } from '../agents'
+import { BaseAgent, TaskResult } from '../agents'
 import { RAGKnowledgeBase } from '../knowledge/rag-knowledge-base'
 
 export type Agent = BaseAgent
 export interface Task {
   id: string
+  type: 'generate' | 'test' | 'review' | 'deploy'
   description?: string
   repo?: string
   service?: string
@@ -436,6 +437,10 @@ export class BorgAwareAgent extends BaseAgent {
     this.borgMemory = borgMemory
   }
 
+  async execute(task: Task): Promise<TaskResult> {
+    return this.executeWithMemory(task)
+  }
+
   async executeWithMemory(task: Task): Promise<any> {
     console.log(`🚀 Executing task with Borg memory: ${task.id}`)
 
@@ -457,9 +462,9 @@ export class BorgAwareAgent extends BaseAgent {
     const outcome = await this.borgMemory.recordOutcome(this, task, {
       success: result.success || false,
       duration,
-      steps: result.steps,
-      errors: result.errors,
-      artifacts: result.artifacts,
+      steps: (result.metadata?.steps as string[]) || [],
+      errors: result.error ? [result.error] : [],
+      artifacts: (result.metadata?.artifacts as string[]) || [],
       output: result.output
     })
 

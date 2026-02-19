@@ -61,7 +61,7 @@ export class CacheStrategyManager {
   }
 
   private maxEntriesPerStrategy: number = 10000
-  private cleanupInterval: NodeJS.Timer
+  private cleanupInterval: ReturnType<typeof setInterval>
 
   constructor(maxEntriesPerStrategy: number = 10000) {
     this.maxEntriesPerStrategy = maxEntriesPerStrategy

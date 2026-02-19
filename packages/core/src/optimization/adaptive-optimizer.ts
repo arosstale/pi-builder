@@ -100,9 +100,9 @@ export class AdaptiveOptimizer {
 
       const successful = results.filter(r => r.success)
       const avgLatency =
-        results.reduce((sum, r) => sum + r.latency, 0) / results.length
+        results.reduce((sum, r) => sum + ((r.metadata?.latency as number) || 0), 0) / results.length
       const avgCost =
-        results.reduce((sum, r) => sum + (r.cost || 0), 0) / results.length
+        results.reduce((sum, r) => sum + ((r.metadata?.cost as number) || 0), 0) / results.length
       const successRate = successful.length / results.length
 
       const pattern: UsagePattern = {

@@ -8,7 +8,7 @@
 
 import type { BaseAgent as Agent, Task, TaskResult } from './agent'
 import { BaseAgent } from './agent'
-import type { EnhancedProvider } from '../providers/enhanced-provider'
+import type { EnhancedProvider, ProviderMessage } from '../providers/enhanced-provider'
 
 /**
  * Claude-specific agent wrapper
@@ -47,7 +47,7 @@ export class ClaudeAgent extends BaseAgent {
           response = await this.provider.generate({
             messages,
             temperature: 0.7,
-            maxTokens: task.metadata?.maxTokens || 2000
+            maxTokens: (task.metadata?.maxTokens as number) || 2000
           })
           break
         } catch (error) {
@@ -89,9 +89,9 @@ export class ClaudeAgent extends BaseAgent {
 
   private formatMessages(
     input: unknown
-  ): Array<{ role: string; content: string }> {
+  ): ProviderMessage[] {
     if (Array.isArray(input)) {
-      return input as Array<{ role: string; content: string }>
+      return input as ProviderMessage[]
     }
 
     return [
@@ -146,7 +146,7 @@ export class OpenAIAgent extends BaseAgent {
       const response = await this.provider.generate({
         messages,
         temperature: 0.7,
-        maxTokens: task.metadata?.maxTokens || 2000
+        maxTokens: (task.metadata?.maxTokens as number) || 2000
       })
 
       const latency = Date.now() - startTime
@@ -177,9 +177,9 @@ export class OpenAIAgent extends BaseAgent {
 
   private formatMessages(
     input: unknown
-  ): Array<{ role: string; content: string }> {
+  ): ProviderMessage[] {
     if (Array.isArray(input)) {
-      return input as Array<{ role: string; content: string }>
+      return input as ProviderMessage[]
     }
 
     return [
@@ -229,7 +229,7 @@ export class GeminiAgent extends BaseAgent {
       const response = await this.provider.generate({
         messages,
         temperature: 0.7,
-        maxTokens: task.metadata?.maxTokens || 2000
+        maxTokens: (task.metadata?.maxTokens as number) || 2000
       })
 
       const latency = Date.now() - startTime
@@ -260,9 +260,9 @@ export class GeminiAgent extends BaseAgent {
 
   private formatMessages(
     input: unknown
-  ): Array<{ role: string; content: string }> {
+  ): ProviderMessage[] {
     if (Array.isArray(input)) {
-      return input as Array<{ role: string; content: string }>
+      return input as ProviderMessage[]
     }
 
     return [
@@ -311,7 +311,7 @@ export class GenericProviderAgent extends BaseAgent {
       const response = await this.provider.generate({
         messages,
         temperature: 0.7,
-        maxTokens: task.metadata?.maxTokens || 2000
+        maxTokens: (task.metadata?.maxTokens as number) || 2000
       })
 
       const latency = Date.now() - startTime
@@ -342,9 +342,9 @@ export class GenericProviderAgent extends BaseAgent {
 
   private formatMessages(
     input: unknown
-  ): Array<{ role: string; content: string }> {
+  ): ProviderMessage[] {
     if (Array.isArray(input)) {
-      return input as Array<{ role: string; content: string }>
+      return input as ProviderMessage[]
     }
 
     return [

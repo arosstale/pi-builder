@@ -16,20 +16,14 @@ export class ProviderAdapter extends BaseAgent {
   private provider: EnhancedProvider
 
   constructor(provider: EnhancedProvider) {
-    const config = {
+    super({
       id: `provider-${provider.id}`,
-      type: 'custom' as const,
+      type: 'custom',
       name: `${provider.name} Adapter`,
       version: '1.0.0',
       enabled: true,
-      capabilities: this.extractCapabilities(provider),
-      metadata: {
-        originalProviderId: provider.id,
-        originalProviderName: provider.name
-      }
-    }
-
-    super(config)
+      capabilities: [],
+    })
     this.provider = provider
   }
 

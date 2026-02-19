@@ -73,7 +73,7 @@ export class FailoverManager {
     maxRetries: 3,
     retryDelay: 1000,
   }
-  private healthCheckTimer?: NodeJS.Timer
+  private healthCheckTimer?: ReturnType<typeof setInterval>
 
   constructor(
     providers?: Map<string, EnhancedProvider>,

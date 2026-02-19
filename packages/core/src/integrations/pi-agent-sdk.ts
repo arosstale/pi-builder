@@ -1,18 +1,38 @@
 /**
  * Pi Agent SDK Integration (PRIMARY)
- * Integration with @mariozechner/pi-agent-core
- * This is the PRIMARY integration for Pi Builder
+ *
+ * Real integration with @mariozechner/pi-coding-agent SDK.
+ * Uses createAgentSession() — the same engine that powers the `pi` CLI.
+ *
+ * Docs: https://github.com/badlogic/pi-mono
+ * SDK:  @mariozechner/pi-coding-agent
  */
 
+import {
+  createAgentSession,
+  SessionManager,
+  AuthStorage,
+  ModelRegistry,
+  createCodingTools,
+  type AgentSession,
+} from '@mariozechner/pi-coding-agent'
 import type { CodeGenerationRequest } from '../types'
 
 export interface PiAgentSDKConfig {
-  sessionId?: string
-  steeringMode?: 'all' | 'one-at-a-time'
-  followUpMode?: 'all' | 'one-at-a-time'
-  maxRetryDelayMs?: number
-  getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined
-  thinkingBudgets?: Record<string, unknown>
+  /** Working directory for the agent (default: process.cwd()) */
+  cwd?: string
+  /** Global pi config directory (default: ~/.pi/agent) */
+  agentDir?: string
+  /** Provider name, e.g. 'anthropic', 'google', 'openai' */
+  provider?: string
+  /** Model ID, e.g. 'claude-haiku-4-20250514' */
+  model?: string
+  /** API key — if omitted, reads from env vars (ANTHROPIC_API_KEY etc.) */
+  apiKey?: string
+  /** Thinking level (default: 'off' for speed) */
+  thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  /** Whether to persist session to disk (default: false) */
+  persistSession?: boolean
 }
 
 export interface AgentTask {
@@ -21,258 +41,198 @@ export interface AgentTask {
   context?: Record<string, unknown>
   language?: string
   framework?: string
-  state?: Record<string, unknown>
 }
 
 export interface AgentTaskResult {
   taskId: string
-  code: string
+  output: string
   language: string
-  explanation: string
-  state: Record<string, unknown>
   metadata: {
     tokensUsed: number
     completedAt: Date
     model: string
-    sessionId?: string
+    sessionId: string
   }
 }
 
 /**
  * Pi Agent SDK Integration
- * PRIMARY integration for Pi Builder
- * Uses the actual @mariozechner/pi-agent-core structure
+ *
+ * Wraps the pi SDK's createAgentSession() to provide code generation
+ * via the full pi agent loop (read/bash/edit/write tools available).
  */
 export class PiAgentSDKIntegration {
-  private sessionId?: string
-  private steeringMode: 'all' | 'one-at-a-time'
-  private followUpMode: 'all' | 'one-at-a-time'
-  private tasks: Map<string, AgentTask> = new Map()
-  private agentState: Record<string, unknown> = {}
+  private config: PiAgentSDKConfig
+  private session: AgentSession | null = null
 
-  constructor(config?: PiAgentSDKConfig) {
-    this.sessionId = config?.sessionId
-    this.steeringMode = config?.steeringMode || 'one-at-a-time'
-    this.followUpMode = config?.followUpMode || 'one-at-a-time'
-    // Acknowledge config options for potential future use
-    void config?.maxRetryDelayMs
-    void config?.getApiKey
-    void config?.thinkingBudgets
+  constructor(config: PiAgentSDKConfig = {}) {
+    this.config = {
+      cwd: process.cwd(),
+      thinkingLevel: 'off',
+      persistSession: false,
+      ...config,
+    }
   }
 
   /**
-   * Execute a task using the Pi Agent SDK
-   * PRIMARY method for code generation
+   * Initialize the pi agent session.
+   * Call once before executeTask(). Safe to call multiple times.
+   */
+  async init(): Promise<void> {
+    if (this.session) return
+
+    const authStorage = AuthStorage.create()
+
+    if (this.config.apiKey && this.config.provider) {
+      authStorage.setRuntimeApiKey(this.config.provider, this.config.apiKey)
+    }
+
+    const modelRegistry = new ModelRegistry(authStorage)
+
+    let model
+    if (this.config.provider && this.config.model) {
+      model = modelRegistry.find(this.config.provider, this.config.model)
+    }
+
+    const cwd = this.config.cwd ?? process.cwd()
+
+    const { session } = await createAgentSession({
+      cwd,
+      agentDir: this.config.agentDir,
+      model,
+      thinkingLevel: this.config.thinkingLevel ?? 'off',
+      authStorage,
+      modelRegistry,
+      tools: createCodingTools(cwd),
+      sessionManager: this.config.persistSession
+        ? SessionManager.create(cwd)
+        : SessionManager.inMemory(cwd),
+    })
+
+    this.session = session
+    console.log('✅ Pi agent session ready')
+  }
+
+  /**
+   * Execute a code generation task via the pi agent loop.
    */
   async executeTask(request: CodeGenerationRequest): Promise<AgentTaskResult> {
-    try {
-      const taskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    await this.init()
 
-      console.log(`🤖 Pi Agent executing task: ${taskId}`)
-      console.log(`   Prompt: ${request.prompt.substring(0, 50)}...`)
-      console.log(`   Language: ${request.language || 'typescript'}`)
-      console.log(`   Framework: ${request.framework || 'none'}`)
+    const taskId = `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+    const session = this.session!
 
-      const task: AgentTask = {
-        id: taskId,
-        prompt: request.prompt,
-        context: request.context,
-        language: request.language || 'typescript',
-        framework: request.framework,
-        state: { ...this.agentState },
+    const chunks: string[] = []
+    let totalTokens = 0
+
+    const unsub = session.subscribe((event) => {
+      if (
+        event.type === 'message_update' &&
+        event.assistantMessageEvent.type === 'text_delta'
+      ) {
+        chunks.push(event.assistantMessageEvent.delta)
       }
-
-      this.tasks.set(taskId, task)
-
-      // Execute the task through agent loop
-      const result = await this.executeAgentLoop(task)
-
-      // Update agent state
-      this.agentState = result.state
-
-      console.log(`✅ Agent task completed: ${taskId}`)
-
-      return {
-        taskId,
-        code: result.code,
-        language: result.language,
-        explanation: result.explanation,
-        state: result.state,
-        metadata: {
-          tokensUsed: result.tokensUsed,
-          completedAt: new Date(),
-          model: 'pi-agent-core',
-          sessionId: this.sessionId,
-        },
+      if (event.type === 'agent_end') {
+        for (const m of event.messages) {
+          if ('usage' in m && m.usage) {
+            const u = m.usage as { inputTokens?: number; outputTokens?: number }
+            totalTokens += (u.inputTokens ?? 0) + (u.outputTokens ?? 0)
+          }
+        }
       }
-    } catch (error) {
-      console.error(
-        `❌ Agent task failed: ${error instanceof Error ? error.message : String(error)}`
-      )
-      throw error
-    }
-  }
+    })
 
-  /**
-   * Simulate the agent loop
-   * In production, this would use actual @mariozechner/pi-agent-core
-   */
-  private async executeAgentLoop(task: AgentTask): Promise<{
-    code: string
-    language: string
-    explanation: string
-    state: Record<string, unknown>
-    tokensUsed: number
-  }> {
-    // Simulate agent loop processing
-    console.log(`⚙️ Running agent loop with mode: ${this.steeringMode}/${this.followUpMode}`)
+    console.log(`🤖 Pi agent executing task: ${taskId}`)
+    await session.prompt(buildPrompt(request))
+    unsub()
 
-    // Simulate LLM call through agent
-    const code = `// Generated by Pi Agent SDK
-// Session: ${this.sessionId || 'default'}
-// Steering: ${this.steeringMode}
-// FollowUp: ${this.followUpMode}
-// Prompt: ${task.prompt}
-// Language: ${task.language}
-// Framework: ${task.framework || 'none'}
+    console.log(`✅ Pi agent task complete: ${taskId}`)
 
-${this.generateCodeTemplate(task.language || 'typescript', task.framework)}`
-
-    return {
-      code,
-      language: task.language || 'typescript',
-      explanation: 'Generated by Pi Agent SDK core loop',
-      state: { ...task.state, lastTaskId: task.id, completedAt: new Date().toISOString() },
-      tokensUsed: Math.ceil((task.prompt.length + code.length) / 4),
-    }
-  }
-
-  /**
-   * Stream task execution for real-time updates
-   */
-  async *streamTask(request: CodeGenerationRequest): AsyncGenerator<string, AgentTaskResult> {
-    const taskId = `task_${Date.now()}_stream`
-    console.log(`🔄 Starting stream for task: ${taskId}`)
-
-    yield `Starting agent task...\n`
-
-    // Simulate streaming execution
-    const chunks = [
-      `Thinking about prompt: "${request.prompt}"\n`,
-      `Language: ${request.language || 'typescript'}\n`,
-      `Framework: ${request.framework || 'none'}\n`,
-      `Generating code...\n`,
-      `\`\`\`\n${this.generateCodeTemplate(request.language, request.framework)}\n\`\`\`\n`,
-    ]
-
-    for (const chunk of chunks) {
-      yield chunk
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
-
-    // Return final result
-    const code = this.generateCodeTemplate(request.language, request.framework)
     return {
       taskId,
-      code,
-      language: request.language || 'typescript',
-      explanation: 'Streamed from Pi Agent SDK',
-      state: { streamed: true },
+      output: chunks.join(''),
+      language: request.language ?? 'typescript',
       metadata: {
-        tokensUsed: (code.length / 4),
+        tokensUsed: totalTokens,
         completedAt: new Date(),
-        model: 'pi-agent-core-stream',
-        sessionId: this.sessionId,
+        model: session.model?.id ?? 'unknown',
+        sessionId: session.sessionId,
       },
     }
   }
 
   /**
-   * Get task status
+   * Stream a task — yields text deltas as they arrive.
    */
-  getTaskStatus(taskId: string): AgentTask | undefined {
-    return this.tasks.get(taskId)
-  }
+  async *streamTask(request: CodeGenerationRequest): AsyncGenerator<string> {
+    await this.init()
+    const session = this.session!
 
-  /**
-   * List all tasks
-   */
-  listTasks(): AgentTask[] {
-    return Array.from(this.tasks.values())
-  }
+    const queue: string[] = []
+    let done = false
 
-  /**
-   * Update session ID (for session-based caching)
-   */
-  setSessionId(sessionId: string): void {
-    this.sessionId = sessionId
-    console.log(`📋 Session ID updated: ${sessionId}`)
-  }
-
-  /**
-   * Get current session ID
-   */
-  getSessionId(): string | undefined {
-    return this.sessionId
-  }
-
-  /**
-   * Update agent state
-   */
-  setAgentState(state: Record<string, unknown>): void {
-    this.agentState = { ...this.agentState, ...state }
-  }
-
-  /**
-   * Get agent state
-   */
-  getAgentState(): Record<string, unknown> {
-    return { ...this.agentState }
-  }
-
-  /**
-   * Clear task history
-   */
-  clearTasks(): void {
-    this.tasks.clear()
-    console.log('🗑️ Task history cleared')
-  }
-
-  private generateCodeTemplate(language?: string, framework?: string): string {
-    const lang = language || 'typescript'
-    const fw = framework || 'vanilla'
-
-    if (lang === 'typescript') {
-      if (fw === 'react') {
-        return `import React from 'react'
-
-export const Component: React.FC = () => {
-  return <div>Generated by Pi Agent</div>
-}`
+    const unsub = session.subscribe((event) => {
+      if (
+        event.type === 'message_update' &&
+        event.assistantMessageEvent.type === 'text_delta'
+      ) {
+        queue.push(event.assistantMessageEvent.delta)
       }
-      return `export async function generatedFunction(input: string): Promise<string> {
-  console.log('Generated by Pi Agent SDK:', input)
-  return \`Processed: \${input}\`
-}`
+      if (event.type === 'agent_end') {
+        done = true
+      }
+    })
+
+    const promptPromise = session.prompt(buildPrompt(request))
+
+    while (!done || queue.length > 0) {
+      if (queue.length > 0) {
+        yield queue.shift()!
+      } else {
+        await new Promise((r) => setTimeout(r, 10))
+      }
     }
 
-    if (lang === 'javascript') {
-      return `async function generatedFunction(input) {
-  console.log('Generated by Pi Agent SDK:', input)
-  return \`Processed: \${input}\`
+    await promptPromise
+    unsub()
+  }
+
+  /**
+   * Send a raw prompt and get the full text response.
+   */
+  async prompt(text: string): Promise<string> {
+    await this.init()
+    const session = this.session!
+    const chunks: string[] = []
+    const unsub = session.subscribe((event) => {
+      if (
+        event.type === 'message_update' &&
+        event.assistantMessageEvent.type === 'text_delta'
+      ) {
+        chunks.push(event.assistantMessageEvent.delta)
+      }
+    })
+    await session.prompt(text)
+    unsub()
+    return chunks.join('')
+  }
+
+  /**
+   * Dispose the session — call when done.
+   */
+  dispose(): void {
+    this.session?.dispose()
+    this.session = null
+  }
 }
 
-export { generatedFunction }`
-    }
-
-    if (lang === 'python') {
-      return `async def generated_function(input_str: str) -> str:
-    """Generated by Pi Agent SDK"""
-    print(f"Generated by Pi Agent SDK: {input_str}")
-    return f"Processed: {input_str}"
-`
-    }
-
-    return `# Generated by Pi Agent SDK\necho "Hello from Pi Agent"`
+function buildPrompt(req: CodeGenerationRequest): string {
+  const parts = [`Generate ${req.language ?? 'TypeScript'} code for the following:`]
+  if (req.framework) parts.push(`Framework: ${req.framework}`)
+  if (req.context && Object.keys(req.context).length > 0) {
+    parts.push(`Context: ${JSON.stringify(req.context, null, 2)}`)
   }
+  parts.push(`\nTask:\n${req.prompt}`)
+  parts.push(`\nReturn only the code with brief inline comments. No markdown fences.`)
+  return parts.join('\n')
 }

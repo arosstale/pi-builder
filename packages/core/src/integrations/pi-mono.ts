@@ -1,101 +1,151 @@
 /**
  * Pi-Mono Integration
- * Integrates with Pi Mono for enhanced automation
+ *
+ * Spawns the `pi` CLI as a subprocess for one-shot non-interactive use.
+ * Uses `pi --print` (print mode) so no TTY is required.
+ *
+ * Use this when you want a lightweight fire-and-forget call to pi
+ * without managing a full SDK session.
+ *
+ * For persistent sessions with streaming, use PiAgentSDKIntegration instead.
  */
 
+import { spawn } from 'child_process'
 import type { Builder } from '../builder'
 
 export interface PiMonoConfig {
-  apiUrl?: string
-  token?: string
+  /** Path to the pi binary (default: 'pi' — relies on PATH) */
+  binaryPath?: string
+  /** Provider to use, e.g. 'anthropic' (passed as --provider) */
+  provider?: string
+  /** Model pattern, e.g. 'claude-haiku-4' (passed as --model) */
+  model?: string
+  /** Timeout in ms for subprocess calls (default: 60000) */
   timeout?: number
+  /** Extra CLI flags to append */
+  extraArgs?: string[]
 }
 
+export interface PiMonoResult {
+  output: string
+  exitCode: number
+}
+
+/**
+ * Pi-Mono Integration — thin wrapper around the `pi --print` CLI.
+ *
+ * Runs `pi -p "<prompt>"` as a child process and returns the output.
+ * No mock data — real pi execution.
+ */
 export class PiMonoIntegration {
-  private apiUrl: string = 'http://localhost:3000/api'
+  private bin: string
+  private baseArgs: string[]
+  private timeout: number
 
-  constructor(config?: PiMonoConfig) {
-    if (config?.apiUrl) this.apiUrl = config.apiUrl
-    if (config?.token) {
-      // Token stored for auth, using void to suppress unused warning
-      void config.token
-    }
-    // Timeout config acknowledged
-    void config?.timeout
+  constructor(config: PiMonoConfig = {}) {
+    this.bin = config.binaryPath ?? 'pi'
+    this.timeout = config.timeout ?? 60_000
+
+    this.baseArgs = ['--no-session']
+    if (config.provider) this.baseArgs.push('--provider', config.provider)
+    if (config.model) this.baseArgs.push('--model', config.model)
+    if (config.extraArgs) this.baseArgs.push(...config.extraArgs)
   }
 
+  /**
+   * Run a one-shot prompt through the pi CLI.
+   * Uses print mode (`-p`) — non-interactive, exits after response.
+   */
+  async prompt(prompt: string): Promise<PiMonoResult> {
+    return this.run([...this.baseArgs, '-p', prompt])
+  }
+
+  /**
+   * Sync project metadata to a pi session context file.
+   * Writes a brief project description that pi can pick up as context.
+   */
   async syncWithPiMono(builder: Builder): Promise<void> {
+    const metadata = builder.getMetadata()
+    if (!metadata) throw new Error('No project metadata found')
+
+    console.log(`🔄 Syncing project context: ${metadata.name}`)
+
+    const summary = [
+      `Project: ${metadata.name}`,
+      metadata.description ? `Description: ${metadata.description}` : '',
+      metadata.platforms ? `Platforms: ${metadata.platforms.join(', ')}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    const result = await this.prompt(
+      `Acknowledge this project context and confirm you understand it:\n\n${summary}`
+    )
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Pi sync failed (exit ${result.exitCode})`)
+    }
+
+    console.log('✅ Pi-Mono sync complete')
+  }
+
+  /**
+   * Trigger a named workflow by prompting pi to execute it.
+   */
+  async triggerWorkflow(workflowId: string, data: Record<string, unknown>): Promise<string> {
+    console.log(`⚙️ Triggering workflow via pi: ${workflowId}`)
+
+    const result = await this.prompt(
+      `Execute workflow "${workflowId}" with this data:\n${JSON.stringify(data, null, 2)}`
+    )
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Workflow "${workflowId}" failed (exit ${result.exitCode})`)
+    }
+
+    console.log(`✅ Workflow complete: ${workflowId}`)
+    return result.output
+  }
+
+  /**
+   * Health check — verifies pi is installed and reachable.
+   */
+  async health(): Promise<boolean> {
     try {
-      const metadata = builder.getMetadata()
-      if (!metadata) {
-        throw new Error('No project metadata found')
-      }
+      const result = await this.run(['--version'])
+      return result.exitCode === 0
+    } catch {
+      return false
+    }
+  }
 
-      console.log(`🔄 Syncing with Pi-Mono: ${metadata.name}`)
+  private run(args: string[]): Promise<PiMonoResult> {
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = []
+      const errChunks: Buffer[] = []
 
-      // Send project info to Pi-Mono
-      const response = await this.sendToAPI('/sync', {
-        projectId: metadata.id,
-        projectName: metadata.name,
-        description: metadata.description,
-        platforms: metadata.platforms,
-        timestamp: new Date().toISOString(),
+      const proc = spawn(this.bin, args, { shell: false })
+
+      const timer = setTimeout(() => {
+        proc.kill()
+        reject(new Error(`pi subprocess timed out after ${this.timeout}ms`))
+      }, this.timeout)
+
+      proc.stdout.on('data', (d: Buffer) => chunks.push(d))
+      proc.stderr.on('data', (d: Buffer) => errChunks.push(d))
+
+      proc.on('error', (err) => {
+        clearTimeout(timer)
+        reject(new Error(`Failed to spawn pi: ${err.message}`))
       })
 
-      console.log(`✅ Pi-Mono sync successful: ${response.message}`)
-    } catch (error) {
-      console.error(
-        `❌ Pi-Mono sync failed: ${error instanceof Error ? error.message : String(error)}`
-      )
-      throw error
-    }
-  }
-
-  async triggerWorkflow(workflowId: string, data: Record<string, unknown>): Promise<void> {
-    try {
-      console.log(`⚙️ Triggering Pi-Mono workflow: ${workflowId}`)
-
-      const response = await this.sendToAPI('/workflows/trigger', {
-        workflowId,
-        data,
-        timestamp: new Date().toISOString(),
+      proc.on('close', (code) => {
+        clearTimeout(timer)
+        resolve({
+          output: Buffer.concat(chunks).toString('utf8'),
+          exitCode: code ?? 1,
+        })
       })
-
-      console.log(`✅ Workflow triggered: ${response.executionId}`)
-    } catch (error) {
-      console.error(
-        `❌ Workflow trigger failed: ${error instanceof Error ? error.message : String(error)}`
-      )
-      throw error
-    }
-  }
-
-  async getWorkflowStatus(executionId: string): Promise<Record<string, unknown>> {
-    try {
-      const response = await this.sendToAPI(`/workflows/${executionId}/status`, {})
-      return response
-    } catch (error) {
-      console.error(`❌ Status check failed: ${error instanceof Error ? error.message : String(error)}`)
-      throw error
-    }
-  }
-
-  private async sendToAPI(
-    endpoint: string,
-    data: Record<string, unknown>
-  ): Promise<Record<string, unknown>> {
-    // Mock implementation - replace with actual fetch
-    console.log(`📡 POST ${this.apiUrl}${endpoint}`)
-    console.log(`Data: ${JSON.stringify(data)}`)
-
-    return {
-      success: true,
-      message: 'Mock response from Pi-Mono',
-      executionId: `exec_${Date.now()}`,
-    }
-  }
-
-  setApiUrl(url: string): void {
-    this.apiUrl = url
+    })
   }
 }

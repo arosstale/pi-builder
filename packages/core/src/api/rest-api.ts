@@ -76,11 +76,12 @@ export class RestAPI {
 
         // Validate spec
         if (!spec || !spec.name) {
-          return res.status(400).json({
+          res.status(400).json({
             success: false,
             error: 'Missing required field: spec.name',
             timestamp: new Date().toISOString()
           })
+          return
         }
 
         // Select model via Stitch
@@ -165,7 +166,7 @@ export class RestAPI {
     // Get agent info
     this.app.get('/api/v1/agents/:name', (req: Request, res: Response) => {
       try {
-        const agent = agentRegistry.getAgent(req.params.name)
+        const agent = agentRegistry.getAgent(String(req.params.name))
         res.json({
           success: true,
           data: {

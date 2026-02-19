@@ -165,6 +165,7 @@ export class NLPController {
     if (parsed.confidence < 0.5) {
       return {
         success: false,
+        message: "Command failed",
         error: `Low confidence (${parsed.confidence.toFixed(2)}) - please be more specific`
       }
     }
@@ -173,6 +174,7 @@ export class NLPController {
     if (!handler) {
       return {
         success: false,
+        message: "Command failed",
         error: `Unknown intent: ${parsed.intent}`
       }
     }
@@ -184,6 +186,7 @@ export class NLPController {
     } catch (error) {
       return {
         success: false,
+        message: "Command failed",
         error: `Failed to execute: ${error instanceof Error ? error.message : String(error)}`
       }
     }

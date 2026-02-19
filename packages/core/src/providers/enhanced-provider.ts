@@ -9,14 +9,55 @@
  * - Capability declaration
  */
 
-import type {
-  ProviderConfig,
-  ExecuteOptions,
-  ProviderMessage,
-  InstallationStatus,
-  ValidationResult,
-  ModelDefinition,
-} from '../types'
+// Types defined locally (previously imported from removed types module)
+export interface ProviderConfig {
+  model?: string
+  temperature?: number
+  maxTokens?: number
+  timeout?: number
+  apiKey?: string
+  baseUrl?: string
+  [key: string]: unknown
+}
+
+export interface ExecuteOptions {
+  prompt: string
+  systemPrompt?: string
+  model?: string
+  temperature?: number
+  maxTokens?: number
+  stream?: boolean
+  context?: Record<string, unknown>
+}
+
+export interface ProviderMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  metadata?: Record<string, unknown>
+}
+
+export interface InstallationStatus {
+  installed: boolean
+  version?: string
+  path?: string
+  error?: string
+}
+
+export interface ValidationResult {
+  valid: boolean
+  errors: string[]
+  warnings: string[]
+}
+
+export interface ModelDefinition {
+  id: string
+  name: string
+  contextWindow: number
+  maxTokens: number
+  costPerInputToken: number
+  costPerOutputToken: number
+  capabilities: string[]
+}
 
 /**
  * Provider health metrics
@@ -72,8 +113,10 @@ export interface ProviderCapabilities {
  * - Cost awareness
  */
 export abstract class EnhancedProvider {
+  public id: string
+  public name: string
+  public model: string
   protected config: ProviderConfig
-  protected name: string
   protected metrics: ExecutionMetrics[] = []
   protected healthScore: ProviderHealthScore = {
     availability: 1.0,
@@ -87,12 +130,27 @@ export abstract class EnhancedProvider {
   constructor(config: ProviderConfig = {}) {
     this.config = config
     this.name = this.getName()
+    this.id = this.name
+    this.model = config.model ?? ''
   }
 
   /**
    * Get the provider name (e.g., "claude", "gpt-4", "gemini")
    */
   abstract getName(): string
+
+  /**
+   * Generate a completion (non-streaming).
+   * Subclasses should override for real implementations.
+   */
+  async generate(options: {
+    messages: ProviderMessage[]
+    model?: string
+    temperature?: number
+    maxTokens?: number
+  }): Promise<{ content: string; usage?: { inputTokens: number; outputTokens: number } }> {
+    throw new Error(`generate() not implemented for provider: ${this.name}`)
+  }
 
   /**
    * Execute a query and stream responses

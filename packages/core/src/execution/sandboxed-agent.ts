@@ -113,8 +113,7 @@ export class SandboxedAgent extends BaseAgent {
         taskId: task.id,
         success: true,
         output: `Task ${task.id} completed in sandbox ${sandboxId}`,
-        executionTime: 1500,
-        timestamp: new Date()
+        metadata: { sandboxId, timestamp: new Date().toISOString() },
       }
 
       // Update resource usage
@@ -149,9 +148,8 @@ export class SandboxedAgent extends BaseAgent {
       return {
         taskId: task.id,
         success: false,
-        output: `Task failed: ${err.message}`,
-        executionTime: 0,
-        timestamp: new Date()
+        error: err.message,
+        metadata: { sandboxId },
       }
     }
   }

@@ -303,7 +303,7 @@ export class ProviderMonitor {
     const result: Record<string, HealthStatus> = {}
     for (const [name] of this.providers) {
       const metrics = this.getLatestMetrics(name)
-      result[name] = metrics ? this.getHealthStatus(metrics) : 'UNKNOWN'
+      result[name] = metrics ? this.getHealthStatus(metrics) : 'OFFLINE'
     }
     return result
   }

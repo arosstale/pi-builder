@@ -227,8 +227,8 @@ export class RevenueOperations {
     subscription: Subscription | null
     plan: SubscriptionPlan | null
   } {
-    const subscription = this.subscriptions.get(subscriptionId)
-    const plan = subscription ? this.plans.get(subscription.planId) : null
+    const subscription = this.subscriptions.get(subscriptionId) ?? null
+    const plan = subscription ? (this.plans.get(subscription.planId) ?? null) : null
 
     return { subscription, plan }
   }

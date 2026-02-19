@@ -1,55 +1,52 @@
 /**
  * SDK Integrations
- * Export all integration modules
- * 
- * PRIMARY: Pi Agent SDK (@mariozechner/pi-agent-core)
- * SECONDARY: Claude SDK, Pi-Mono, OpenCode, OpenClaw
+ *
+ * PRIMARY: Pi Agent SDK — real @mariozechner/pi-coding-agent integration
+ * SECONDARY: Pi-Mono CLI wrapper, OpenClaw gateway client
+ * LOCAL LLM: Codex, Ollama, LM Studio
+ * ROUTING: Multi-channel router
  */
 
-// PRIMARY INTEGRATION
+// ─── PRIMARY: pi SDK (createAgentSession) ────────────────────────────────────
 export { PiAgentSDKIntegration } from './pi-agent-sdk'
-export type {
-  PiAgentSDKConfig,
-  AgentTask,
-  AgentTaskResult,
-} from './pi-agent-sdk'
+export type { PiAgentSDKConfig, AgentTask, AgentTaskResult } from './pi-agent-sdk'
 
-// SECONDARY INTEGRATIONS
+// ─── SECONDARY ────────────────────────────────────────────────────────────────
 export { ClaudeSDKIntegration } from './claude-sdk'
 export type { ClaudeSDKConfig } from './claude-sdk'
 
+// Pi CLI subprocess wrapper (pi --print)
 export { PiMonoIntegration } from './pi-mono'
-export type { PiMonoConfig } from './pi-mono'
+export type { PiMonoConfig, PiMonoResult } from './pi-mono'
 
-export { OpenCodeSDKIntegration } from './opencode-sdk'
-export type { OpenCodeConfig } from './opencode-sdk'
-
+// OpenClaw gateway client (personal assistant gateway)
 export { OpenClawIntegration } from './openclaw'
-export type { OpenClawConfig, ScrapingTask, ScrapingResult } from './openclaw'
-
-// LOCAL LLM PROVIDERS
-export { CodexAgent, CodexProvider } from './codex-provider'
-export type { CodexConfig, CodeCompletionRequest, CodeCompletionResponse } from './codex-provider'
-
-export { OllamaAgent, OllamaProvider } from './ollama-provider'
-export type { OllamaConfig, OllamaGenerationRequest, OllamaGenerationResponse } from './ollama-provider'
-
-export { LMStudioAgent, LMStudioProvider } from './lm-studio-provider'
-export type { LMStudioConfig, LMStudioCompletionRequest, LMStudioCompletionResponse } from './lm-studio-provider'
-
-// NEW PROVIDERS (V2.0)
-export { OpenClawProvider } from './openclaw-provider'
-export type { OpenClawRequest, OpenClawResponse, Tool } from './openclaw-provider'
-
-export { PiMonoProvider } from './pi-mono-provider'
-export type { PiMonoTask, PiMonoResult, PiMonoConfig } from './pi-mono-provider'
-
-export { OpenHandsProvider } from './openhands-provider'
-export type { OpenHandsAction, OpenHandsState, OpenHandsTask } from './openhands-provider'
+export type { OpenClawConfig, GatewayMessage, GatewayResponse } from './openclaw'
 
 export { OpenCodeSDK } from './opencode-sdk'
 export type { OpenCodeRequest, GeneratedCode, CodeAnalysis, Issue } from './opencode-sdk'
 
-// Phase 12: Multi-Channel Router
-export { MultiChannelRouter, TelegramProvider, SlackProvider, EmailProvider, WhatsAppProvider, SMSProvider, PhoneProvider } from './multi-channel-router'
+// ─── LOCAL LLM PROVIDERS ──────────────────────────────────────────────────────
+export { CodexProvider } from './codex-provider'
+export type { CodexConfig, CodeCompletionRequest, CodeCompletionResponse } from './codex-provider'
+
+export { OllamaProvider } from './ollama-provider'
+export type { OllamaConfig, OllamaGenerationRequest, OllamaGenerationResponse } from './ollama-provider'
+
+export { LMStudioProvider } from './lm-studio-provider'
+export type { LMStudioConfig, LMStudioCompletionRequest, LMStudioCompletionResponse } from './lm-studio-provider'
+
+export { OpenHandsProvider } from './openhands-provider'
+export type { OpenHandsAction, OpenHandsState, OpenHandsTask } from './openhands-provider'
+
+// ─── ROUTING ──────────────────────────────────────────────────────────────────
+export {
+  MultiChannelRouter,
+  TelegramProvider,
+  SlackProvider,
+  EmailProvider,
+  WhatsAppProvider,
+  SMSProvider,
+  PhoneProvider,
+} from './multi-channel-router'
 export type { Channel, ChannelMessage, ChannelResponse, IChannelProvider } from './multi-channel-router'

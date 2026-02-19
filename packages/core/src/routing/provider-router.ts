@@ -8,7 +8,7 @@
  * - Failover chains
  */
 
-import type { ExecuteOptions } from '../types'
+import type { ExecuteOptions } from '../providers/enhanced-provider'
 import type { EnhancedProvider } from '../providers/enhanced-provider'
 
 /**
@@ -128,7 +128,7 @@ export class ProviderRouter {
     // Score by cost (lower is better)
     const scored = candidates.map((provider) => {
       const health = provider.getHealthScore()
-      const costPerToken = provider.getCostPerToken(request.model)
+      const costPerToken = provider.getCostPerToken(request.model ?? '')
       const totalCost = costPerToken.input + costPerToken.output
       const score = totalCost * (1 + (1 - health.availability) * 0.1) // Penalize low availability
 

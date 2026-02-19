@@ -165,7 +165,7 @@ export class StitchCoordinator {
    * Get task routing history
    */
   getTaskHistory(): Record<string, string> {
-    return new Map(this.taskHistory)
+    return Object.fromEntries(this.taskHistory)
   }
 
   /**
