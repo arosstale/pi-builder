@@ -41,19 +41,20 @@ import {
 
 // Resolve the web UI HTML file — look relative to this module, then relative to CWD
 function resolveUiPath(): string {
+  // Prefer v2 (Jules-built), fall back to v1, then CWD
+  const base = dirname(fileURLToPath(import.meta.url))
   const candidates = [
-    // Running from source: packages/core/src/server/ → apps/web/
-    resolve(dirname(fileURLToPath(import.meta.url)), '../../../../apps/web/pi-builder-ui.html'),
-    // Running from dist: packages/core/dist/server/ → apps/web/
-    resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../apps/web/pi-builder-ui.html'),
-    // CWD fallback
+    resolve(base, '../../../../apps/web/pi-builder-ui-v2.html'),
+    resolve(base, '../../../../../apps/web/pi-builder-ui-v2.html'),
+    resolve(base, '../../../../apps/web/pi-builder-ui.html'),
+    resolve(base, '../../../../../apps/web/pi-builder-ui.html'),
+    resolve(process.cwd(), 'apps/web/pi-builder-ui-v2.html'),
     resolve(process.cwd(), 'apps/web/pi-builder-ui.html'),
-    resolve(process.cwd(), 'pi-builder-ui.html'),
   ]
   for (const p of candidates) {
     try { readFileSync(p); return p } catch { /* try next */ }
   }
-  return candidates[0] // will 404 gracefully
+  return candidates[0]
 }
 
 function serveHttp(req: IncomingMessage, res: ServerResponse): void {

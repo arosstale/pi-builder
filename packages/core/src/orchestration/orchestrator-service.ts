@@ -26,10 +26,10 @@ import {
 // ---------------------------------------------------------------------------
 
 export type MiddlewareAction =
-  | { action: 'pass' }                          // continue as-is
-  | { action: 'transform'; prompt: string }     // rewrite the prompt
-  | { action: 'block'; reason: string }         // stop — emit error frame
-  | { action: 'route'; agentId: string }        // force a specific agent
+  | { action: 'pass' }                                            // continue as-is
+  | { action: 'transform'; prompt: string }                       // rewrite the prompt
+  | { action: 'block'; reason: string }                           // stop — emit error frame
+  | { action: 'route'; agentId: string; prompt?: string }         // force agent, optionally rewrite prompt too
 
 export interface MiddlewareContext {
   sessionId: string
@@ -109,6 +109,13 @@ export class OrchestratorService extends EventEmitter {
 
   async init(): Promise<void> {
     await this.db.connect()
+    // Built-in middleware: @agent prefix routes to a specific agent
+    // e.g. "@claude fix auth.ts" → strips @claude prefix, routes to claude wrapper
+    this.use((prompt): MiddlewareAction => {
+      const match = prompt.match(/^@(\S+)\s+([\s\S]+)$/)
+      if (match) return { action: 'route', agentId: match[1], prompt: match[2] }
+      return { action: 'pass' }
+    })
   }
 
   async close(): Promise<void> {
@@ -152,8 +159,8 @@ export class OrchestratorService extends EventEmitter {
       }
 
       if (result.action === 'route') {
-        // Force agent — still run remaining middleware for transforms
-        return { prompt, forceAgent: result.agentId }
+        // Force agent; use rewritten prompt if provided
+        return { prompt: result.prompt ?? prompt, forceAgent: result.agentId }
       }
       // 'pass' → continue
     }
