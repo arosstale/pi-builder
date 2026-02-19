@@ -1,44 +1,47 @@
-# Discord proposal for pi-mono contribution (issue #1533)
+# pi-mono contribution plan
 
-Post this in the pi-mono Discord: https://discord.com/invite/nKXTsAcmbT
-Target channel: #contributions or #general (wherever contributors post)
+Mario returns Feb 23, 2026. `arosstale` not yet in APPROVED_CONTRIBUTORS.
+Two fix branches ready. Post comments on both discussions when Mario is back.
 
 ---
 
-Hey, I want to fix issue #1533 — the unrecoverable session crash when an
-OpenAI-compatible proxy returns `finish_reason: "error"`.
+## Fix 1 — discussion #1533
+https://github.com/badlogic/pi-mono/discussions/1533
+Branch: `arosstale/pi-mono@fix/1533-map-stop-reason-error` (commit 9234bde8)
 
-The bug is in `mapStopReason()` in `openai-completions.ts`. Right now the
-default branch does:
+### Comment to post on #1533
 
-```ts
-default: {
-  const _exhaustive: never = reason;
-  throw new Error(`Unhandled stop reason: ${_exhaustive}`);
-}
+Fix is ready on `arosstale/pi-mono@fix/1533-map-stop-reason-error`.
+
+Two changes, one file (`openai-completions.ts`):
+- Widen `mapStopReason` param to `string | null` (removes the unused `ChatCompletionChunk` import)
+- Add `case "error"` + change `default` from throw to `return "error"` — matches `google-shared.ts mapStopReasonString()`
+
+Need to be added to APPROVED_CONTRIBUTORS to open the PR. Can add a test if needed.
+
+---
+
+## Fix 2 — discussion #1487
+https://github.com/badlogic/pi-mono/discussions/1487
+Branch: `arosstale/pi-mono@fix/1487-google-cached-tokens-double-count` (commit 2123534b)
+
+### Comment to post on #1487
+
+Fix ready on `arosstale/pi-mono@fix/1487-google-cached-tokens-double-count`.
+
+One line change in `google.ts` — apply the same subtraction already in `google-gemini-cli.ts` (line 660):
+
+```
+input: (chunk.usageMetadata.promptTokenCount || 0) - (chunk.usageMetadata.cachedContentTokenCount || 0),
 ```
 
-So any out-of-spec value from a proxy kills the session. GitHub Copilot,
-LiteLLM, and other proxies do send `"error"` on rate limits / upstream
-failures — and users get a crash instead of a graceful error.
-
-My fix (2 hunks, 1 file):
-1. Widen the parameter type from `ChatCompletionChunk.Choice["finish_reason"]`
-   to `string | null` — removes the unused import too
-2. Add `case "error": return "error"` and change `default` from throw to
-   `return "error"` — matching the exact pattern already used in
-   `google-shared.ts mapStopReasonString()`
-
-Branch is ready on my fork: `arosstale/pi-mono`, branch
-`fix/1533-map-stop-reason-error`.
-
-Happy to add a test if that's preferred before PR. Just need to be added
-to APPROVED_CONTRIBUTORS to open the PR. Thanks!
+Will open PR once approved on #1533.
 
 ---
 
-Notes:
-- Keep it short, one screen, own voice (not AI-sounding)
-- Paste the branch link so Mario can see the exact diff
-- Don't explain the obvious — Mario knows the codebase
-- Don't use "I noticed" / "I'd like to" / "I was wondering"
+## Notes
+- Post #1533 comment first — that gets us approved
+- #1487 comment can go same day — once approved we can open both PRs
+- Don't open a Contribution Proposal discussion — we're offering to fix existing bugs, not proposing new work
+- PR gate: bot adds `arosstale` to APPROVED_CONTRIBUTORS after Mario's `lgtm`
+- Both fixes: 1 file each, clean, no deps on each other

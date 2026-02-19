@@ -7,243 +7,43 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ============================================================================
-  # PUBLISH RELEASE
-  # ============================================================================
-  publish-release:
+  release:
     runs-on: ubuntu-latest
-    name: Publish Release
+    name: Create Release
 
     permissions:
-      contents: read
-      id-token: write
+      contents: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js with npm registry
-        uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: '20.x'
-          cache: npm
-          registry-url: https://registry.npmjs.org/
+          bun-version: latest
 
       - name: Install dependencies
-        run: npm ci
+        run: bun install
 
       - name: Type check
-        run: npm run typecheck
+        run: bun run typecheck
 
-      - name: Lint
-        run: npm run lint
+      - name: Test
+        run: npx vitest run packages/core
 
-      - name: Build
-        run: npm run build
-
-      - name: Run tests
-        run: npm run test:ci
-
-      - name: Get version
+      - name: Get version from tag
         id: version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          TAG_NAME="${{ github.ref }}"
-          TAG_VERSION="${TAG_NAME#refs/tags/}"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "TAG_VERSION=$TAG_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Verify version match
-        run: |
-          if [ "${{ steps.version.outputs.VERSION }}" != "${{ steps.version.outputs.TAG_VERSION }}" ]; then
-            echo "❌ Version mismatch!"
-            echo "package.json: ${{ steps.version.outputs.VERSION }}"
-            echo "Git tag: ${{ steps.version.outputs.TAG_VERSION }}"
-            exit 1
-          fi
-          echo "✅ Version matched: ${{ steps.version.outputs.VERSION }}"
-
-      - name: Publish to npm
-        run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        if: secrets.NPM_TOKEN != ''
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            const path = require('path');
-            
-            // Read changelog
-            let changelog = '';
-            try {
-              const changelogPath = path.join(process.env.GITHUB_WORKSPACE, 'CHANGELOG.md');
-              changelog = fs.readFileSync(changelogPath, 'utf8');
-            } catch (e) {
-              console.log('Could not read CHANGELOG.md');
-            }
-
-            const version = '${{ steps.version.outputs.VERSION }}';
-            const tagName = '${{ steps.version.outputs.TAG_VERSION }}';
-
-            try {
-              await github.rest.repos.createRelease({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag_name: tagName,
-                name: `Pi Builder ${version}`,
-                body: changelog || `Release v${version}`,
-                draft: false,
-                prerelease: version.includes('alpha') || version.includes('beta')
-              });
-              console.log(`✅ Created GitHub Release: ${tagName}`);
-            } catch (error) {
-              console.log(`⚠️  Release already exists or other error: ${error.message}`);
-            }
-
-  # ============================================================================
-  # PUBLISH DOCUMENTATION
-  # ============================================================================
-  publish-docs:
-    runs-on: ubuntu-latest
-    name: Publish Documentation
-    needs: publish-release
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build documentation
-        run: |
-          mkdir -p docs-build
-          # Copy markdown files
-          cp README.md docs-build/
-          cp QUICK_START.md docs-build/
-          cp INTEGRATION_GUIDE.md docs-build/
-          cp CONTRIBUTING.md docs-build/
-          cp CHANGELOG.md docs-build/
-          
-          # Optional: Generate HTML docs
-          # npm run docs:build
-
-      - name: Deploy documentation
-        if: success()
-        run: |
-          echo "✅ Documentation prepared for deployment"
-          echo "Next step: Deploy to GitHub Pages or documentation site"
-
-  # ============================================================================
-  # NOTIFY CHANNELS
-  # ============================================================================
-  notify:
-    runs-on: ubuntu-latest
-    name: Notify Release
-    needs: publish-release
-    if: success()
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Get release info
-        id: release
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "REPO=${{ github.repository }}" >> $GITHUB_OUTPUT
-          echo "URL=https://www.npmjs.com/package/pi-builder" >> $GITHUB_OUTPUT
-
-      - name: Create notification
-        run: |
-          cat << 'EOF'
-          
-          ✅ Pi Builder v${{ steps.release.outputs.VERSION }} Released!
-          
-          📦 npm: ${{ steps.release.outputs.URL }}
-          🔗 GitHub: https://github.com/${{ steps.release.outputs.REPO }}
-          
-          Key Features:
-          ✨ 2-3x better performance than Auto Maker
-          💰 35-50% cost reduction potential
-          🔄 Intelligent routing (4 strategies)
-          ⚡ Automatic failover
-          💾 Multi-strategy caching
-          🔒 Enterprise-grade security
-          
-          Install: npm install pi-builder@${{ steps.release.outputs.VERSION }}
-          
-          EOF
-
-      - name: Send notification (optional)
-        run: |
-          echo "Add GitHub secret SLACK_WEBHOOK to enable Slack notifications"
-          echo "Add GitHub secret TWITTER_TOKEN to enable Twitter notifications"
-
-  # ============================================================================
-  # POST-RELEASE CHECKS
-  # ============================================================================
-  verify-release:
-    runs-on: ubuntu-latest
-    name: Verify Release
-    needs: publish-release
-    if: success()
-
-    steps:
-      - name: Wait for npm
-        run: sleep 30
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-
-      - name: Verify npm publication
-        run: |
-          VERSION=$(node -p "require('${{ github.workspace }}/package.json').version")
-          npm view pi-builder@$VERSION > /dev/null && echo "✅ Package available on npm" || echo "⚠️  Package not yet available"
-
-      - name: Check GitHub Release
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const version = '${{ steps.version.outputs.VERSION }}';
-            const releases = await github.rest.repos.listReleases({
+            await github.rest.repos.createRelease({
               owner: context.repo.owner,
-              repo: context.repo.repo
-            });
-            
-            const found = releases.data.find(r => r.tag_name === `v${version}`);
-            if (found) {
-              console.log(`✅ GitHub Release created: ${found.html_url}`);
-            } else {
-              console.log('⚠️  GitHub Release not found');
-            }
-
-      - name: Release summary
-        run: |
-          cat << 'EOF'
-          
-          🎉 Release Complete!
-          
-          ✅ Published to npm
-          ✅ GitHub Release created
-          ✅ Documentation prepared
-          
-          Next steps:
-          1. Monitor npm download stats
-          2. Watch GitHub issues
-          3. Gather community feedback
-          4. Plan next release
-          
-          EOF
+              repo: context.repo.repo,
+              tag_name: context.ref.replace('refs/tags/', ''),
+              name: `pi-builder ${{ steps.version.outputs.VERSION }}`,
+              generate_release_notes: true,
+              draft: false,
+              prerelease: '${{ steps.version.outputs.VERSION }}'.includes('alpha') || '${{ steps.version.outputs.VERSION }}'.includes('beta')
+            })
