@@ -1,62 +1,109 @@
 #!/usr/bin/env node
 
 import { program } from 'commander'
-import { Builder } from '@pi-builder/core'
-import { logger } from '@pi-builder/utils'
+import { startGateway } from '@pi-builder/core'
+import { createOrchestrator } from '@pi-builder/core'
 
 const version = '0.1.0'
 
 program
   .name('pi-builder')
-  .description('Beautiful, open-source AI code generator for all platforms')
+  .description('Unified interface over any installed CLI coding agent')
   .version(version)
 
+// ── start ──────────────────────────────────────────────────────────────────
+
 program
-  .command('init <name>')
-  .description('Initialize a new Pi Builder project')
-  .option('-p, --platforms <platforms>', 'Platforms to include (web,desktop,mobile,cli)')
-  .option('-d, --description <desc>', 'Project description')
-  .action(async (name: string, options: Record<string, unknown>) => {
-    try {
-      const platforms = (String(options.platforms) || 'web,cli')
-        .split(',')
-        .map((p: string) => p.trim())
+  .command('start')
+  .description('Start the pi-builder gateway (WebSocket + web UI)')
+  .option('-p, --port <port>', 'WebSocket port', '18900')
+  .option('--host <host>', 'Bind host', '127.0.0.1')
+  .option('--work-dir <dir>', 'Agent working directory', process.cwd())
+  .option('--agents <agents>', 'Preferred agent order (comma-separated)', '')
+  .option('--db <path>', 'SQLite database path', ':memory:')
+  .action(async (options: Record<string, string>) => {
+    const port = parseInt(options.port, 10)
+    const preferredAgents = options.agents
+      ? options.agents.split(',').map((a: string) => a.trim()).filter(Boolean)
+      : undefined
 
-      const config = {
-        name,
-        description: String(options.description || ''),
-        rootDir: process.cwd(),
-        platforms: platforms as ('web' | 'desktop' | 'mobile' | 'cli')[],
+    console.log('🚀 Pi Builder starting...')
+
+    const gw = await startGateway({
+      port,
+      host: options.host,
+      orchestrator: {
+        workDir: options.workDir,
+        preferredAgents,
+        dbPath: options.db,
+      },
+    })
+
+    console.log(`✅ Gateway: ${gw.url}`)
+    console.log(`🌐 Web UI:  Open pi-builder-ui.html in your browser`)
+    console.log('')
+    console.log('Checking installed agents...')
+
+    // Non-blocking health check
+    const orch = createOrchestrator({ preferredAgents, fallback: true })
+    orch.checkHealth().then((health) => {
+      const available = Object.entries(health).filter(([, ok]) => ok).map(([id]) => id)
+      const missing   = Object.entries(health).filter(([, ok]) => !ok).map(([id]) => id)
+      if (available.length > 0) console.log(`✅ Available: ${available.join(', ')}`)
+      if (missing.length > 0)   console.log(`⚠️  Not found: ${missing.join(', ')}`)
+      if (available.length === 0) {
+        console.log('❌ No agents found. Install one:')
+        console.log('   npm install -g @anthropic-ai/claude-code')
+        console.log('   pip install aider-chat')
       }
+    }).catch(() => {})
 
-      const builder = new Builder(config)
-      await builder.initialize({ verbose: true })
+    console.log('')
+    console.log('Press Ctrl+C to stop.')
 
-      logger.log(`Project "${name}" initialized successfully!`)
-      logger.log(`Platforms: ${platforms.join(', ')}`)
-    } catch (error) {
-      logger.error(
-        `Failed to initialize project: ${error instanceof Error ? error.message : String(error)}`
-      )
+    process.on('SIGINT', async () => { await gw.stop(); process.exit(0) })
+    process.on('SIGTERM', async () => { await gw.stop(); process.exit(0) })
+  })
+
+// ── agents ─────────────────────────────────────────────────────────────────
+
+program
+  .command('agents')
+  .description('List installed CLI coding agents')
+  .action(async () => {
+    console.log('🔍 Checking installed agents...\n')
+    const orch = createOrchestrator({ fallback: true })
+    const health = await orch.checkHealth()
+    for (const [id, ok] of Object.entries(health)) {
+      console.log(`${ok ? '✅' : '❌'}  ${id}`)
+    }
+    process.exit(0)
+  })
+
+// ── run ────────────────────────────────────────────────────────────────────
+
+program
+  .command('run <prompt>')
+  .description('One-shot: run a prompt with the best available agent')
+  .option('--agent <id>', 'Force a specific agent')
+  .option('--work-dir <dir>', 'Working directory', process.cwd())
+  .action(async (prompt: string, options: Record<string, string>) => {
+    const preferredAgents = options.agent ? [options.agent] : undefined
+    const orch = createOrchestrator({ preferredAgents, fallback: true })
+    const task = { prompt, workDir: options.workDir }
+
+    const wrapper = await orch.selectForTask(task)
+    if (!wrapper) {
+      console.error('❌ No available agent. Run `pi-builder agents` to see what\'s installed.')
       process.exit(1)
     }
-  })
 
-program
-  .command('generate')
-  .description('Generate code using AI')
-  .option('-p, --prompt <prompt>', 'Code generation prompt')
-  .option('-l, --language <language>', 'Programming language')
-  .action(async (_options: Record<string, unknown>) => {
-    logger.log('Code generation coming soon!')
-  })
-
-program
-  .command('build')
-  .description('Build the project')
-  .option('--platform <platform>', 'Build specific platform')
-  .action(_options => {
-    logger.log('Build functionality coming soon!')
+    console.log(`🤖 ${wrapper.name}\n`)
+    for await (const chunk of wrapper.executeStream(task)) {
+      process.stdout.write(chunk)
+    }
+    process.stdout.write('\n')
+    process.exit(0)
   })
 
 program.parse(process.argv)

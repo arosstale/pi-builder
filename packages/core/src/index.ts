@@ -58,3 +58,48 @@ export type {
   AggregatedResult,
   AgentExecutionEvent,
 } from './agents'
+
+
+// Gateway + Orchestration (new unified layer)
+export {
+  PiBuilderGateway,
+  startGateway,
+} from './server'
+export type {
+  GatewayConfig,
+  ClientMessage,
+  ServerFrame,
+} from './server'
+
+export {
+  OrchestratorService,
+  createOrchestratorService,
+  SubagentRegistry,
+} from './orchestration'
+export type {
+  OrchestratorConfig as ServiceConfig,
+  ChatMessage,
+  TurnResult,
+  SubagentTemplate,
+  SubagentFrontmatter,
+} from './orchestration'
+
+// CLI Agent wrappers + orchestrator
+export {
+  WrapperOrchestrator,
+  createOrchestrator,
+  ClaudeCodeWrapper,
+  AiderWrapper,
+  OpenCodeWrapper,
+  CodexCLIWrapper,
+  GeminiCLIWrapper,
+  GooseWrapper,
+  PlandexWrapper,
+  SWEAgentWrapper,
+  CrushWrapper,
+  GptmeWrapper,
+} from './integrations'
+export type {
+  CLIAgentTask,
+  CLIAgentResult,
+} from './integrations'
