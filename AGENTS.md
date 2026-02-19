@@ -174,7 +174,7 @@ Path aliases (defined in `tsconfig.json`):
 
 - Node.js version requirement: `>=20.0.0`
 - Module system: ESM (`"type": "module"`)
-- Supported CLI agents: claude, aider, opencode, codex, gemini, goose, plandex, swe-agent, crush, gptme
+- Supported CLI agents: aider, claude, codex, crush, gemini, goose, gptme, opencode, plandex, swe-agent
 - Health check caching: 30 seconds TTL for agent version checks
 
 ---
