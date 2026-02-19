@@ -40,7 +40,7 @@ program
     })
 
     console.log(`✅ Gateway: ${gw.url}`)
-    console.log(`🌐 Web UI:  Open pi-builder-ui.html in your browser`)
+    console.log(`🌐 Web UI:  http://${options.host}:${options.port}/`)
     console.log('')
     console.log('Checking installed agents...')
 

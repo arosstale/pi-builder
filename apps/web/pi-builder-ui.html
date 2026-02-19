@@ -261,7 +261,7 @@
   <div id="status-dot" class="connecting"></div>
   <div id="status-label">connecting…</div>
   <div class="spacer"></div>
-  <input class="ws-input" id="ws-url" value="ws://127.0.0.1:18900" placeholder="ws://…">
+  <input class="ws-input" id="ws-url" placeholder="ws://…">
   <button class="agents-pill" onclick="toggleSidebar()">agents</button>
 </header>
 
@@ -294,6 +294,20 @@ let ws = null
 let streaming = null   // { el: Element, cursor: Element } | null
 let msgSeq = 0
 let sidebarOpen = false
+
+// ── Auto-detect WS URL ────────────────────────────────────────────────────
+// When served via HTTP (e.g. http://localhost:18900/), derive WS URL from page host.
+// When opened as a local file, fall back to ws://127.0.0.1:18900.
+;(function setDefaultWsUrl() {
+  const input = document.getElementById('ws-url')
+  if (input.value) return
+  if (location.protocol === 'http:' || location.protocol === 'https:') {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+    input.value = `${proto}://${location.host}`
+  } else {
+    input.value = 'ws://127.0.0.1:18900'
+  }
+})()
 
 // ── WebSocket connection ───────────────────────────────────────────────────
 function connect() {

@@ -26,7 +26,10 @@
  *     { type: "ok",            id, method }
  */
 
-import { createServer, type Server as HttpServer } from 'node:http'
+import { createServer, type Server as HttpServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { readFileSync } from 'node:fs'
+import { resolve, join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { WebSocketServer, WebSocket } from 'ws'
 import {
   OrchestratorService,
@@ -35,6 +38,41 @@ import {
   type ChatMessage,
   type TurnResult,
 } from '../orchestration/orchestrator-service'
+
+// Resolve the web UI HTML file — look relative to this module, then relative to CWD
+function resolveUiPath(): string {
+  const candidates = [
+    // Running from source: packages/core/src/server/ → apps/web/
+    resolve(dirname(fileURLToPath(import.meta.url)), '../../../../apps/web/pi-builder-ui.html'),
+    // Running from dist: packages/core/dist/server/ → apps/web/
+    resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../apps/web/pi-builder-ui.html'),
+    // CWD fallback
+    resolve(process.cwd(), 'apps/web/pi-builder-ui.html'),
+    resolve(process.cwd(), 'pi-builder-ui.html'),
+  ]
+  for (const p of candidates) {
+    try { readFileSync(p); return p } catch { /* try next */ }
+  }
+  return candidates[0] // will 404 gracefully
+}
+
+function serveHttp(req: IncomingMessage, res: ServerResponse): void {
+  const url = req.url ?? '/'
+  // Only serve GET /
+  if (req.method !== 'GET' || (url !== '/' && url !== '/index.html')) {
+    res.writeHead(404, { 'Content-Type': 'text/plain' })
+    res.end('Not found')
+    return
+  }
+  try {
+    const html = readFileSync(resolveUiPath())
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+    res.end(html)
+  } catch {
+    res.writeHead(503, { 'Content-Type': 'text/plain' })
+    res.end('Web UI not found — open apps/web/pi-builder-ui.html directly')
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,7 +112,7 @@ export class PiBuilderGateway {
       host: '127.0.0.1',
       ...config,
     }
-    this.httpServer = createServer()
+    this.httpServer = createServer(serveHttp)
     this.wss = new WebSocketServer({ server: this.httpServer })
     this.wss.on('connection', (ws) => this.onConnection(ws))
   }

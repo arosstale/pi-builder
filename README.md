@@ -1,105 +1,132 @@
-# Pi Builder 🚀
+# pi-builder
 
-**Beautiful, open-source, unrestricted multi-platform AI code builder.**
+Our personal build of [pi](https://github.com/badlogic/pi-mono) — a routing layer that dispatches coding tasks to whichever CLI agent is installed.
 
-A modern replacement for Auto Maker with zero license restrictions. Build apps for web, desktop (Electron/Tauri), mobile (React Native), and CLI—all from one codebase.
+MIT License.
 
-## Features
+---
 
-- ✨ **Web UI** - Browser-based code generation and automation
-- 🖥️ **Desktop** - Native apps via Electron & Tauri
-- 📱 **Mobile** - React Native support (iOS/Android)
-- 🔧 **CLI** - Command-line code generation tool
-- 🤖 **AI-Powered** - Claude integration for intelligent code generation
-- 📦 **Multi-Platform** - Single source, compile to any platform
-- 🔓 **MIT License** - No restrictions on commercial use, monetization, or deployment
+## What it does
 
-## Get Started
+You talk to pi-builder. pi-builder figures out which coding agent you have installed (claude, aider, opencode, gemini, goose, plandex, codex, swe-agent, crush, gptme) and routes your prompt to it. Responses stream back in real-time over WebSocket to a browser UI.
+
+```
+You → pi-builder gateway → best available agent → streamed back to you
+```
+
+---
+
+## Quick start
 
 ```bash
-# Clone and install
-git clone https://github.com/yourusername/pi-builder.git
-cd pi-builder
-npm install
+# Install dependencies
+bun install
 
-# Development
-npm run dev:web      # Start web UI dev server
-npm run dev:desktop  # Start desktop dev
-npm run dev:cli      # CLI development
+# Check which agents you have
+npx tsx apps/cli/src/cli.ts agents
 
-# Production
-npm run build
+# Start the gateway + open the web UI
+npx tsx apps/cli/src/cli.ts start
+
+# Open apps/web/pi-builder-ui.html in your browser
+# Send a prompt — it routes to whatever agent is installed
+
+# One-shot from CLI
+npx tsx apps/cli/src/cli.ts run "refactor this file to use async/await"
 ```
+
+---
 
 ## Architecture
 
 ```
-pi-builder/
-├── packages/
-│   ├── @pi-builder/core       # Core engine
-│   ├── @pi-builder/types      # Shared types
-│   ├── @pi-builder/prompts    # AI prompts
-│   └── @pi-builder/utils      # Utilities
-├── apps/
-│   ├── web/                   # Next.js/React web UI
-│   ├── desktop/               # Electron + Tauri desktop
-│   ├── mobile/                # React Native
-│   └── cli/                   # Node.js CLI tool
-└── scripts/
-    └── dev.mjs                # Dev orchestration
+apps/
+  cli/src/cli.ts              — start | agents | run commands
+  web/pi-builder-ui.html      — self-contained chat UI (no build step)
+
+packages/core/src/
+  integrations/agent-wrappers.ts    — 10 real CLI agent wrappers + WrapperOrchestrator
+  orchestration/orchestrator-service.ts  — routes messages, persists to SQLite, EventEmitter
+  server/websocket-server.ts        — WS gateway (port 18900), serves orchestrator events
+  db/database.ts                    — SQLite via bun:sqlite / better-sqlite3
+  code-generator.ts                 — direct Claude API calls (Anthropic or OpenRouter)
+  integrations/pi-agent-sdk.ts      — @mariozechner/pi-coding-agent SDK wrapper
+  integrations/pi-mono.ts           — pi CLI subprocess wrapper
 ```
-
-## Why Pi Builder?
-
-| Feature | Auto Maker | Pi Builder |
-|---------|-----------|-----------|
-| **License** | Custom (restrictive) | MIT (unrestricted) |
-| **Monetization** | Requires Core Contributor vote | ✅ Free to monetize |
-| **Hosting/SaaS** | Not allowed | ✅ Deploy anywhere |
-| **Forks/Derivatives** | Limited | ✅ Full freedom |
-| **Commercial Use** | Restricted | ✅ Unrestricted |
-| **Multi-Platform** | Electron only | Web + Desktop + Mobile + CLI |
-
-## Development Workflow
-
-```bash
-# Install dependencies
-npm install
-
-# Build shared packages
-npm run build:packages
-
-# Watch mode (all platforms)
-npm run dev
-
-# Individual platform development
-npm run dev:web      # Port 3000
-npm run dev:desktop  # Electron dev
-npm run dev:cli      # Node dev
-
-# Testing
-npm run test
-npm test:watch
-
-# Linting
-npm run lint
-npm run lint:fix
-
-# Type checking
-npm run typecheck
-```
-
-## Project Status
-
-- 🚧 **Phase 1**: Core architecture & package setup
-- 🚧 **Phase 2**: Web UI foundation
-- 🚧 **Phase 3**: Desktop & mobile apps
-- 🚧 **Phase 4**: AI integration & automation
-
-## License
-
-MIT License - Use freely for any purpose, including commercial projects.
 
 ---
 
-**Built with 💜 by Artale** - No restrictions, full freedom.
+## Supported agents
+
+| Agent | Binary | Key capabilities |
+|-------|--------|-----------------|
+| Claude Code | `claude` | code-gen, analysis, debugging |
+| Aider | `aider` | pair-programming, git-aware, multi-file |
+| OpenCode | `opencode` | multi-provider, LSP-aware |
+| Codex CLI | `codex` | command execution, repo tasks |
+| Gemini CLI | `gemini` | large-context, multimodal |
+| Goose | `goose` | local-first, MCP, execution |
+| Plandex | `plandex` | plan-first, structured steps |
+| SWE-agent | `swe-agent` | research-backed, structured |
+| Crush | `crush` | fast iteration, terminal-native |
+| gptme | `gptme` | open-source, self-hosted |
+
+You don't need all of them. pi-builder detects what's installed and picks the best available one for each task.
+
+---
+
+## WebSocket protocol
+
+Connect to `ws://127.0.0.1:18900`.
+
+**Client → server:**
+```json
+{ "type": "send",    "id": "1", "message": "fix the bug in auth.ts" }
+{ "type": "history", "id": "2" }
+{ "type": "agents",  "id": "3" }
+{ "type": "health",  "id": "4" }
+{ "type": "clear",   "id": "5" }
+```
+
+**Server → client:**
+```json
+{ "type": "hello",         "sessionId": "session-..." }
+{ "type": "chunk",         "agent": "claude", "text": "..." }
+{ "type": "turn_complete", "id": "1", "message": {...}, "agentResult": {...} }
+{ "type": "agent_start",   "agent": "claude", "task": "fix the bug..." }
+{ "type": "agent_end",     "agent": "claude", "status": "success", "durationMs": 4200 }
+{ "type": "history",       "id": "2", "messages": [...] }
+{ "type": "agents",        "id": "3", "list": [...] }
+{ "type": "health",        "id": "4", "agents": {"claude": true, "aider": false} }
+{ "type": "error",         "id": "?", "message": "..." }
+```
+
+---
+
+## Tests
+
+```bash
+npx vitest run packages/core
+# 38 files, 968 pass
+```
+
+---
+
+## Status
+
+| Component | Status |
+|-----------|--------|
+| Agent wrappers (10 agents) | ✅ Done |
+| WS gateway | ✅ Done |
+| Web UI | ✅ Done |
+| CLI (start / agents / run) | ✅ Done |
+| SQLite session persistence | ✅ Done |
+| Code generator (Claude direct) | ✅ Done |
+| pi SDK integration | ✅ Done |
+| Desktop app | 🔲 Not started |
+| HTTP serving web UI from gateway | 🔲 Next |
+| Input transform middleware | 🔲 Next |
+
+---
+
+Built by Artale. MIT.
