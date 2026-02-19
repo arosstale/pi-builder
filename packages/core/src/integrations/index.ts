@@ -13,7 +13,9 @@
 
 // ─── CLI AGENT WRAPPERS (core vision) ─────────────────────────────────────────
 export {
-  // individual wrappers
+  // pi SDK wrapper — first-class, no subprocess
+  PiAgentWrapper,
+  // individual CLI wrappers
   ClaudeCodeWrapper,
   AiderWrapper,
   OpenCodeWrapper,
@@ -33,6 +35,7 @@ export type {
   AgentTask as CLIAgentTask,
   AgentResult as CLIAgentResult,
   OrchestratorConfig,
+  PiAgentWrapperConfig,
 } from './agent-wrappers'
 
 // ─── PRIMARY: pi SDK (createAgentSession) ────────────────────────────────────

@@ -190,9 +190,10 @@ describe('WrapperOrchestrator', () => {
 // ---------------------------------------------------------------------------
 
 describe('createOrchestrator', () => {
-  it('registers all 10 known agents', () => {
+  it('registers all 11 known agents', () => {
     const orch = createOrchestrator()
     const ids = orch.getWrappers().map((w) => w.id)
+    expect(ids).toContain('pi')
     expect(ids).toContain('claude')
     expect(ids).toContain('aider')
     expect(ids).toContain('opencode')
@@ -203,7 +204,7 @@ describe('createOrchestrator', () => {
     expect(ids).toContain('swe-agent')
     expect(ids).toContain('crush')
     expect(ids).toContain('gptme')
-    expect(ids).toHaveLength(10)
+    expect(ids).toHaveLength(11)
   })
 
   it('accepts preferred agent config', () => {

@@ -345,6 +345,144 @@ export class GptmeWrapper extends BaseAgentWrapper {
 }
 
 // ---------------------------------------------------------------------------
+// PiAgentWrapper — uses @mariozechner/pi-coding-agent SDK directly
+// No subprocess. No binary. pi runs inside this process via createAgentSession().
+// This is pi-builder's first-class agent — always preferred when available.
+// ---------------------------------------------------------------------------
+
+export interface PiAgentWrapperConfig {
+  /** Working directory the agent operates in (default: process.cwd()) */
+  cwd?: string
+  /** Provider id, e.g. 'anthropic', 'google' (default: reads from pi config) */
+  provider?: string
+  /** Model id e.g. 'claude-haiku-4-20250514' */
+  model?: string
+}
+
+export class PiAgentWrapper implements AgentWrapper {
+  readonly id = 'pi'
+  readonly name = 'pi'
+  readonly binary = 'pi'
+  readonly capabilities = [
+    'code-generation', 'code-analysis', 'refactoring', 'testing',
+    'explanation', 'debugging', 'multi-file', 'git-aware',
+    'tool-use', 'extensions', 'session-memory',
+  ]
+
+  private config: PiAgentWrapperConfig
+  private sdkAvailable: boolean | null = null
+
+  constructor(config: PiAgentWrapperConfig = {}) {
+    this.config = config
+  }
+
+  private async checkSdk(): Promise<boolean> {
+    if (this.sdkAvailable !== null) return this.sdkAvailable
+    try {
+      await import('@mariozechner/pi-coding-agent')
+      this.sdkAvailable = true
+    } catch {
+      this.sdkAvailable = false
+    }
+    return this.sdkAvailable
+  }
+
+  async health(): Promise<boolean> {
+    return this.checkSdk()
+  }
+
+  async version(): Promise<string | null> {
+    try {
+      const sdk = await import('@mariozechner/pi-coding-agent')
+      // VERSION is exported by the package
+      return (sdk as Record<string, unknown>).VERSION as string ?? 'sdk'
+    } catch {
+      return null
+    }
+  }
+
+  async execute(task: AgentTask): Promise<AgentResult> {
+    const t0 = Date.now()
+    let output = ''
+    try {
+      for await (const chunk of this.executeStream(task)) {
+        output += chunk
+      }
+      return { agent: this.id, status: 'success', output, durationMs: Date.now() - t0 }
+    } catch (err) {
+      return {
+        agent: this.id,
+        status: 'error',
+        output,
+        stderr: err instanceof Error ? err.message : String(err),
+        durationMs: Date.now() - t0,
+      }
+    }
+  }
+
+  async *executeStream(task: AgentTask): AsyncGenerator<string> {
+    const {
+      createAgentSession,
+      AuthStorage,
+      ModelRegistry,
+      SessionManager,
+    } = await import('@mariozechner/pi-coding-agent')
+
+    const authStorage = AuthStorage.create()
+    const modelRegistry = new ModelRegistry(authStorage)
+
+    const sessionOptions: Record<string, unknown> = {
+      sessionManager: SessionManager.inMemory(),
+      authStorage,
+      modelRegistry,
+      cwd: task.workDir ?? this.config.cwd ?? process.cwd(),
+    }
+
+    if (this.config.model) sessionOptions.model = this.config.model
+
+    const { session } = await createAgentSession(sessionOptions as never)
+
+    // Buffer for yielding text chunks
+    const queue: string[] = []
+    let done = false
+    let resolveNext: (() => void) | null = null
+
+    session.subscribe((event: Record<string, unknown>) => {
+      if (
+        event.type === 'message_update' &&
+        (event.assistantMessageEvent as Record<string, unknown>)?.type === 'text_delta'
+      ) {
+        const delta = (event.assistantMessageEvent as Record<string, unknown>).delta as string
+        if (delta) {
+          queue.push(delta)
+          resolveNext?.()
+          resolveNext = null
+        }
+      }
+    })
+
+    // Run prompt — completes (or rejects) when agent is done
+    let promptError: unknown = null
+    const promptPromise = session.prompt(task.prompt).then(
+      () => { done = true; resolveNext?.(); resolveNext = null },
+      (err: unknown) => { promptError = err; done = true; resolveNext?.(); resolveNext = null },
+    )
+
+    // Drain queue as chunks arrive
+    while (!done || queue.length > 0) {
+      if (queue.length > 0) {
+        yield queue.shift()!
+      } else {
+        await new Promise<void>((r) => { resolveNext = r })
+      }
+    }
+
+    await promptPromise
+    if (promptError) throw promptError
+  }
+}
+
+// ---------------------------------------------------------------------------
 // WrapperOrchestrator
 // Routes tasks to the best available agent
 // ---------------------------------------------------------------------------
@@ -383,6 +521,7 @@ export class WrapperOrchestrator extends EventEmitter {
   /** Register all known wrappers — health check determines which are usable */
   registerAll(): this {
     return this
+      .register(new PiAgentWrapper())   // pi SDK — always preferred when available
       .register(new ClaudeCodeWrapper())
       .register(new AiderWrapper())
       .register(new OpenCodeWrapper())
@@ -519,5 +658,10 @@ export class WrapperOrchestrator extends EventEmitter {
 // ---------------------------------------------------------------------------
 
 export function createOrchestrator(config?: OrchestratorConfig): WrapperOrchestrator {
-  return new WrapperOrchestrator(config).registerAll()
+  const cfg: OrchestratorConfig = {
+    // pi is always first preference — it uses our installed SDK, no subprocess
+    preferredAgents: ['pi', ...(config?.preferredAgents ?? [])],
+    ...config,
+  }
+  return new WrapperOrchestrator(cfg).registerAll()
 }
