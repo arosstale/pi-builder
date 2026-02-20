@@ -1,185 +1,168 @@
 # AGENTS.md
 
-This file contains conventions and guidelines for AI agents working on the pi-builder repository.
+Conventions for AI agents working on pi-builder.
 
-## Repository Overview
-
-**pi-builder** is a TypeScript monorepo (bun workspaces) that orchestrates CLI coding agents. It provides a unified interface over any CLI coding agent with WebSocket protocol support for multi-platform usage.
-
-## Repository Layout
-
-```
-pi-builder/
-├── packages/
-│   ├── core/       # Core orchestration logic, agent wrappers, WebSocket server
-│   ├── types/      # Shared TypeScript types
-│   └── utils/      # Utility functions
-└── apps/
-    ├── cli/        # Command-line interface application
-    ├── web/        # Web UI (pi-builder-ui.html)
-    └── desktop/    # Electron desktop application
-```
-
-## Key Files
-
-When working on core functionality, pay attention to these key files:
-
-- **`packages/core/src/integrations/agent-wrappers.ts`** - CLI agent wrapper implementations (claude, aider, opencode, etc.)
-- **`packages/core/src/orchestration/orchestrator-service.ts`** - Routes user messages to agents with middleware support
-- **`packages/core/src/server/websocket-server.ts`** - WebSocket server (port 18900) using ws library
-- **`packages/core/src/db/database.ts`** - SQLite persistence via bun:sqlite (Bun) or better-sqlite3 (Node)
-
-## Build & Test Commands
-
-### Installation
-```bash
-bun install  # Run at repository root
-```
-
-### Testing
-```bash
-npx vitest run packages/core  # Run core tests (39 test files, 983 passing tests)
-npm run test                  # Run all tests
-npm run test:watch            # Watch mode
-```
-
-### Building
-```bash
-npm run build                 # Build all packages (typecheck)
-npm run build:packages        # Build packages only
-
-# For Electron desktop app:
-cd apps/desktop
-tsc                          # TypeScript compilation for Electron
-```
-
-### Development
-```bash
-npm run dev:cli              # Run CLI in dev mode
-npm run dev:web              # Run web UI in dev mode
-npm run dev:desktop          # Run desktop app in dev mode
-```
-
-### Linting
-```bash
-npm run lint                 # Check linting
-npm run lint:fix             # Auto-fix linting issues
-npm run typecheck            # TypeScript type checking
-```
-
-## Code Style
-
-**Strict TypeScript Requirements:**
-- TypeScript `strict: true` mode is enabled
-- **Never use `any` type** - use proper types or `unknown` with type guards
-- 2-space indentation (configured in `.prettierrc`)
-- Single quotes for strings
-- No semicolons
-- Arrow parens: avoid (e.g., `x => x` not `(x) => x`)
-- Print width: 100 characters
-- Trailing commas: ES5
-
-Example:
-```typescript
-// ✓ Good
-export interface AgentTask {
-  prompt: string
-  workDir?: string
-  timeout?: number
-}
-
-function processTask(task: AgentTask): Promise<AgentResult> {
-  return orchestrator.execute(task)
-}
-
-// ✗ Bad
-export interface AgentTask {
-  prompt: any;  // Never use any!
-  workDir?: any;
-}
-
-function processTask(task: any): Promise<any> {  // Bad!
-    return orchestrator.execute(task);  // 4 spaces, semicolons
-}
-```
-
-## Architecture Details
-
-### WebSocket Server
-- **Default port:** 18900
-- **Protocol:** JSON frames over WebSocket
-- Located in `packages/core/src/server/websocket-server.ts`
-
-### Database
-- **Type:** SQLite
-- **Driver:** `bun:sqlite` (Bun runtime) or `better-sqlite3` (Node.js)
-- **Location:** `packages/core/src/db/database.ts`
-- Used for session persistence and chat history
-
-### Middleware System
-- **Location:** `OrchestratorService.use(fn)`
-- **Purpose:** Transform, block, or route prompts before they reach agents
-- **Middleware actions:**
-  - `pass` - Continue as-is
-  - `transform` - Rewrite the prompt
-  - `block` - Stop processing with reason
-  - `route` - Force a specific agent
-
-Example:
-```typescript
-orchestrator.use((prompt, ctx) => {
-  if (prompt.includes('delete all')) {
-    return { action: 'block', reason: 'Destructive operation requires confirmation' }
-  }
-  return { action: 'pass' }
-})
-```
-
-## Important Git Conventions
-
-**DO NOT:**
-- ❌ Use `git add -A` or `git add .` - Be explicit about which files you're adding
-- ❌ Delete files without explicit user confirmation
-- ❌ Make sweeping changes across multiple files without incremental commits
-
-**DO:**
-- ✓ Add files explicitly: `git add path/to/specific/file.ts`
-- ✓ Make small, focused commits
-- ✓ Ask for confirmation before deleting files
-- ✓ Use `.gitignore` to exclude build artifacts and dependencies
-
-## Workspaces
-
-This is a **bun workspaces** monorepo. Package references:
-```json
-{
-  "workspaces": ["packages/*", "apps/*"]
-}
-```
-
-Path aliases (defined in `tsconfig.json`):
-- `@pi-builder/core` → `packages/core/src`
-- `@pi-builder/types` → `packages/types/src`
-- `@pi-builder/utils` → `packages/utils/src`
-
-## Testing Philosophy
-
-- Tests are located in `packages/core/__tests__/`
-- Test files: `*.test.ts`
-- Currently: 39 test files with 983 passing tests
-- Run specific tests: `npx vitest run packages/core`
-- Use vitest for all testing
-
-## Additional Notes
-
-- Node.js version requirement: `>=20.0.0`
-- Module system: ESM (`"type": "module"`)
-- Supported CLI agents: aider, claude, codex, crush, gemini, goose, gptme, opencode, plandex, swe-agent
-- Health check caching: 30 seconds TTL for agent version checks
+Read the codebase first. This file fills gaps the code can't answer.
 
 ---
 
-For more details, see:
-- `README.md` - Project overview and quick start
-- `CONTRIBUTING.md` - Contribution guidelines
-- Individual package `package.json` files for specific dependencies
+## What pi-builder is
+
+A local-first WebSocket gateway that routes prompts across any installed CLI coding agent (pi, claude, codex, gemini, aider, opencode, crush, …). One interface, any agent, automatic fallback.
+
+**Not** a chat UI wrapper. **Not** a cloud service. The orchestration layer runs on your machine.
+
+---
+
+## Layout
+
+```
+pi-builder/
+├── packages/core/src/
+│   ├── integrations/
+│   │   ├── agent-wrappers.ts      # BaseAgentWrapper + 11 concrete wrappers + WrapperOrchestrator
+│   │   └── pi-agent-sdk.ts        # PiAgentWrapper — pi SDK in-process (no subprocess)
+│   ├── orchestration/
+│   │   └── orchestrator-service.ts # OrchestratorService — middleware, routing, history, queue
+│   ├── server/
+│   │   └── websocket-server.ts    # PiBuilderGateway — HTTP + WS on port 18900
+│   └── db/
+│       └── database.ts            # SQLite — bun:sqlite (Bun) / in-memory shim (Node)
+├── apps/
+│   ├── cli/src/cli.ts             # start / agents [--json] / run commands
+│   ├── web/pi-builder-ui.html     # Single-file web UI (agent bar, queue badge, diff panel)
+│   └── desktop/src/main.ts        # Electron — spawns bun subprocess for gateway
+├── scripts/
+│   ├── reflect.sh                 # Pre-push gate (Mitsuhiko's rule)
+│   └── smoke-test.mjs             # E2E WebSocket smoke test
+└── docs/
+    ├── START_HERE.md
+    └── pi-mono-discord-proposal.md
+```
+
+---
+
+## Commands
+
+```bash
+bun install                        # install (bun workspaces, no npm/yarn)
+bun run start                      # start gateway at http://127.0.0.1:18900/
+bun run apps/cli/src/cli.ts agents # list available agents + health
+bun run typecheck                  # tsc --noEmit
+npx vitest run packages/core       # run tests (40 files, 1000 pass, 3 skipped)
+bun run reflect                    # pre-push gate — run before every push
+bun scripts/smoke-test.mjs         # e2e WebSocket test
+```
+
+**Never** use `bun test` — it doesn't set VITEST=true and breaks better-sqlite3 detection.
+
+---
+
+## Architecture
+
+### Agent wrappers (`agent-wrappers.ts`)
+
+Each wrapper extends `BaseAgentWrapper`:
+- `health()` → `version()` → `execFileAsync(binary, ['--version'], {timeout:3000})`
+- `execute(task)` → spawn + collect stdout
+- `executeStream(task)` → AsyncGenerator yielding chunks
+
+Special cases:
+- **GeminiCLIWrapper** overrides `version()` — `gemini --version` hangs indefinitely, so we kill after 2s and resolve with buffered stdout on close.
+- **PiAgentWrapper** — uses `@mariozechner/pi-coding-agent` SDK in-process via `createAgentSession()`. No subprocess. Always preferred when available.
+
+`WrapperOrchestrator` manages the pool: 30s health cache, `preferredAgents` ordering, capability matching, fallback chain.
+
+### OrchestratorService (`orchestrator-service.ts`)
+
+Single session per gateway instance. Key properties:
+- `history: ChatMessage[]` — in-memory + persisted to `pi_chat_history` SQLite table when `dbPath` is set
+- `messageQueue` — messages received while `isExecuting` are queued and drained sequentially via `_drainQueue()` after each turn
+- `middleware: MiddlewareFn[]` — built-in: `@agent prefix` routing (`@claude fix auth.ts` → routes to claude wrapper)
+
+Message flow: `processMessage()` → queue if busy → `_processMessageNow()` → middleware → select wrapper → `executeStream()` → persist → emit events → drain queue.
+
+### WebSocket server (`websocket-server.ts`)
+
+Port 18900. HTTP serves `apps/web/pi-builder-ui.html` at `GET /`.
+
+Protocol frames (client → server):
+```
+{ type: "send",    message: string }     # prompt
+{ type: "agents"  }                      # list available agents
+{ type: "health"  }                      # health check all agents
+{ type: "history" }                      # get full chat history
+{ type: "clear"   }                      # clear history
+{ type: "diff"    }                      # get git diff HEAD --stat
+{ type: "queue"   }                      # get pending message queue
+```
+
+Protocol frames (server → client):
+```
+{ type: "hello",        sessionId }
+{ type: "user_message", message }
+{ type: "agent_start",  agent, task }
+{ type: "chunk",        agent, text }
+{ type: "agent_end",    agent, status, durationMs }
+{ type: "turn_complete",message, agentResult }
+{ type: "queued",       queueLength, preview }
+{ type: "diff",         diff: string|null }
+{ type: "agents",       list: AgentInfo[] }
+{ type: "health",       agents: Record<string,boolean> }
+{ type: "history",      messages: ChatMessage[] }
+{ type: "error",        message }
+{ type: "ok",           method }
+```
+
+Optional auth: `GatewayConfig.authToken` — Bearer token for HTTP, `?token=` query param or Authorization header for WS. Localhost (`127.0.0.1` / `::1`) bypasses auth by default.
+
+### Web UI (`apps/web/pi-builder-ui.html`)
+
+Single HTML file, no build step. Key JS state:
+- `pinnedAgent` — null = Auto, string = agent id. Pinned agent prepends `@agentid ` to messages.
+- `queueCount` — pending messages while agent is running. Shows amber badge on Send.
+- Sidebar: agent health dots + git diff panel. Auto-opens when first diff arrives.
+- On WS connect: sends `{type:"history"}` to restore session.
+
+---
+
+## Code style
+
+- TypeScript strict mode. No `any`. No `as never` / `as unknown` without a comment explaining why.
+- 2-space indent, single quotes, no semicolons, 100 char line width.
+- ESM (`"type": "module"`). Named exports. No barrel re-exports that break tree-shaking.
+- Error paths must be handled. No silent swallowing.
+- When uncertain about a type or behavior: add a `// TODO:` and read the source. Honest gap > hallucinated boilerplate.
+
+---
+
+## Pre-push gate
+
+Before every `git push`, run:
+
+```bash
+bun run reflect
+```
+
+This runs: diff stat → type cast audit → typecheck → tests → import check → final diff read.
+
+The self-review is a separate pass from the one that wrote the code. The question is "is this correct?" not "does this match what I intended?" — those are different questions.
+
+---
+
+## Git conventions
+
+- Stage explicitly: `git add path/to/file.ts` — never `git add -A` or `git add .`
+- Never delete files without confirmation — archive instead
+- Commit format: `<type>(<scope>): <summary>` then blank line then body
+- Types: `feat` / `fix` / `docs` / `refactor` / `chore` / `test` / `perf`
+- Body always present unless trivial typo — explain what, why, decisions made
+
+---
+
+## What's in progress / known gaps
+
+- Session persistence only works with file-backed SQLite (`dbPath`). Default `:memory:` loses history on restart.
+- Mobile / relay: not implemented. Happier has this. We don't yet.
+- Git diff is `--stat` only (summary). Full patch view not in UI yet.
+- `crush` and `opencode` wrappers spawn real subprocesses — their non-interactive flags may need tuning per version.
