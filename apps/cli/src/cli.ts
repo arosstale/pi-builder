@@ -3,6 +3,9 @@
 import { program } from 'commander'
 import { startGateway } from '@pi-builder/core'
 import { createOrchestrator } from '@pi-builder/core'
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
 
 const version = '0.1.0'
 
@@ -20,14 +23,22 @@ program
   .option('--host <host>', 'Bind host', '127.0.0.1')
   .option('--work-dir <dir>', 'Agent working directory', process.cwd())
   .option('--agents <agents>', 'Preferred agent order (comma-separated)', '')
-  .option('--db <path>', 'SQLite database path', ':memory:')
+  .option('--db <path>', 'SQLite database path (default: ~/.pi-builder/sessions.db)')
   .action(async (options: Record<string, string>) => {
     const port = parseInt(options.port, 10)
     const preferredAgents = options.agents
       ? options.agents.split(',').map((a: string) => a.trim()).filter(Boolean)
       : undefined
 
+    // Resolve default db path — ~/.pi-builder/sessions.db
+    const dbPath = options.db ?? (() => {
+      const dir = join(homedir(), '.pi-builder')
+      mkdirSync(dir, { recursive: true })
+      return join(dir, 'sessions.db')
+    })()
+
     console.log('🚀 Pi Builder starting...')
+    console.log(`💾 Session DB: ${dbPath}`)
 
     const gw = await startGateway({
       port,
@@ -35,7 +46,7 @@ program
       orchestrator: {
         workDir: options.workDir,
         preferredAgents,
-        dbPath: options.db,
+        dbPath,
       },
     })
 
