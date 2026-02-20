@@ -30,7 +30,11 @@ import { createServer, type Server as HttpServer, type IncomingMessage, type Ser
 import { readFileSync } from 'node:fs'
 import { resolve, join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { WebSocketServer, WebSocket } from 'ws'
+
+const execFileAsync = promisify(execFile)
 import {
   OrchestratorService,
   createOrchestratorService,
@@ -71,7 +75,7 @@ export interface GatewayConfig {
 }
 
 export interface ClientMessage {
-  type: 'send' | 'health' | 'agents' | 'history' | 'clear'
+  type: 'send' | 'health' | 'agents' | 'history' | 'clear' | 'diff' | 'queue'
   id?: string
   message?: string
 }
@@ -177,6 +181,11 @@ export class PiBuilderGateway {
     })
     this.orchestrator.on('turn_complete', (result: TurnResult) => {
       this.broadcast({ type: 'turn_complete', id: result.message.id, message: result.message, agentResult: result.agentResult })
+      // Broadcast git diff after each turn so UI can show what changed
+      this.broadcastGitDiff()
+    })
+    this.orchestrator.on('queued', (info: { message: string; queueLength: number }) => {
+      this.broadcast({ type: 'queued', queueLength: info.queueLength, preview: info.message.slice(0, 80) })
     })
     this.orchestrator.on('agent_start', (info: { agent: string; task: string }) => {
       this.broadcast({ type: 'agent_start', ...info })
@@ -262,6 +271,12 @@ export class PiBuilderGateway {
         case 'clear':
           this.handleClear(ws, frame)
           break
+        case 'diff':
+          await this.handleDiff(ws, frame)
+          break
+        case 'queue':
+          this.handleQueue(ws, frame)
+          break
         default:
           this.send(ws, { type: 'error', id: frame.id, message: `Unknown method: ${frame.type}` })
       }
@@ -304,6 +319,37 @@ export class PiBuilderGateway {
   private handleClear(ws: WebSocket, frame: ClientMessage): void {
     this.orchestrator.clearHistory()
     this.send(ws, { type: 'ok', id: frame.id, method: 'clear' })
+  }
+
+  private async handleDiff(ws: WebSocket, frame: ClientMessage): Promise<void> {
+    const diff = await this.getGitDiff()
+    this.send(ws, { type: 'diff', id: frame.id, diff })
+  }
+
+  private handleQueue(ws: WebSocket, frame: ClientMessage): void {
+    const queue = this.orchestrator.getQueue()
+    this.send(ws, { type: 'queue', id: frame.id, queue })
+  }
+
+  private async getGitDiff(): Promise<string | null> {
+    const cwd = this.config.orchestrator?.workDir ?? process.cwd()
+    try {
+      const { stdout } = await execFileAsync('git', ['diff', 'HEAD', '--stat', '--no-color'], {
+        cwd,
+        timeout: 5000,
+      })
+      return stdout.trim() || null
+    } catch {
+      return null
+    }
+  }
+
+  private broadcastGitDiff(): void {
+    this.getGitDiff().then((diff) => {
+      if (diff !== null) {
+        this.broadcast({ type: 'diff', diff })
+      }
+    }).catch(() => { /* ignore */ })
   }
 
   // ---------------------------------------------------------------------------

@@ -92,6 +92,9 @@ export class OrchestratorService extends EventEmitter {
   private isExecuting = false
   private middleware: MiddlewareFn[] = []
 
+  // Message queue — holds messages received while agent is executing
+  private messageQueue: Array<{ message: string; resolve: (r: TurnResult) => void; reject: (e: Error) => void }> = []
+
   constructor(config: OrchestratorConfig = {}) {
     super()
     this.config = { timeout: 120_000, ...config }
@@ -109,6 +112,7 @@ export class OrchestratorService extends EventEmitter {
 
   async init(): Promise<void> {
     await this.db.connect()
+    await this.loadPersistedHistory()
     // Built-in middleware: @agent prefix routes to a specific agent
     // e.g. "@claude fix auth.ts" → strips @claude prefix, routes to claude wrapper
     this.use((prompt): MiddlewareAction => {
@@ -116,6 +120,52 @@ export class OrchestratorService extends EventEmitter {
       if (match) return { action: 'route', agentId: match[1], prompt: match[2] }
       return { action: 'pass' }
     })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Session persistence
+  // ---------------------------------------------------------------------------
+
+  private async loadPersistedHistory(): Promise<void> {
+    // Only load from file-backed SQLite (not :memory:)
+    if (!this.config.dbPath || this.config.dbPath === ':memory:') return
+    try {
+      const raw = await (this.db as any).db?.all?.(
+        `SELECT role, content, agent_used, duration_ms, timestamp, message_id
+         FROM pi_chat_history ORDER BY rowid ASC LIMIT 200`
+      )
+      if (!Array.isArray(raw)) return
+      this.history = raw.map((r: any) => ({
+        id: r.message_id ?? `msg-${Math.random().toString(36).slice(2)}`,
+        role: r.role as 'user' | 'assistant',
+        content: r.content,
+        agentUsed: r.agent_used ?? undefined,
+        durationMs: r.duration_ms ?? undefined,
+        timestamp: new Date(r.timestamp),
+      }))
+    } catch { /* table may not exist yet — ignore */ }
+  }
+
+  private async persistMessage(msg: ChatMessage): Promise<void> {
+    if (!this.config.dbPath || this.config.dbPath === ':memory:') return
+    try {
+      await (this.db as any).db?.run?.(
+        `CREATE TABLE IF NOT EXISTS pi_chat_history (
+          message_id TEXT PRIMARY KEY,
+          role       TEXT NOT NULL,
+          content    TEXT NOT NULL,
+          agent_used TEXT,
+          duration_ms INTEGER,
+          timestamp  TEXT NOT NULL
+        )`
+      )
+      await (this.db as any).db?.run?.(
+        `INSERT OR REPLACE INTO pi_chat_history
+         (message_id, role, content, agent_used, duration_ms, timestamp)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [msg.id, msg.role, msg.content, msg.agentUsed ?? null, msg.durationMs ?? null, msg.timestamp.toISOString()]
+      )
+    } catch { /* best-effort */ }
   }
 
   async close(): Promise<void> {
@@ -198,9 +248,29 @@ export class OrchestratorService extends EventEmitter {
   // ---------------------------------------------------------------------------
 
   async processMessage(userMessage: string): Promise<TurnResult> {
+    // Queue the message if agent is busy, drain sequentially
     if (this.isExecuting) {
-      throw new Error('Already processing — wait for current turn to complete')
+      return new Promise((resolve, reject) => {
+        this.messageQueue.push({ message: userMessage, resolve, reject })
+        this.emit('queued', { message: userMessage, queueLength: this.messageQueue.length })
+      })
     }
+    return this._processMessageNow(userMessage)
+  }
+
+  private async _drainQueue(): Promise<void> {
+    while (this.messageQueue.length > 0) {
+      const next = this.messageQueue.shift()!
+      try {
+        const result = await this._processMessageNow(next.message)
+        next.resolve(result)
+      } catch (e) {
+        next.reject(e as Error)
+      }
+    }
+  }
+
+  private async _processMessageNow(userMessage: string): Promise<TurnResult> {
     this.isExecuting = true
 
     try {
@@ -213,6 +283,7 @@ export class OrchestratorService extends EventEmitter {
       }
       this.history.push(userMsg)
       this.emit('user_message', userMsg)
+      await this.persistMessage(userMsg)
 
       await this.db.createTask({
         userId: this.sessionId,
@@ -312,6 +383,7 @@ export class OrchestratorService extends EventEmitter {
         timestamp: new Date(),
       }
       this.history.push(assistantMsg)
+      await this.persistMessage(assistantMsg)
 
       await this.db.createTask({
         userId: this.sessionId,
@@ -331,6 +403,8 @@ export class OrchestratorService extends EventEmitter {
 
     } finally {
       this.isExecuting = false
+      // Drain queued messages
+      setImmediate(() => this._drainQueue())
     }
   }
 
@@ -397,6 +471,17 @@ export class OrchestratorService extends EventEmitter {
 
   clearHistory(): void {
     this.history = []
+  }
+
+  getQueue(): string[] {
+    return this.messageQueue.map((q) => q.message)
+  }
+
+  clearQueue(): void {
+    const drained = this.messageQueue.splice(0)
+    for (const item of drained) {
+      item.reject(new Error('Queue cleared'))
+    }
   }
 
   getSessionId(): string {

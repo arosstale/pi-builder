@@ -154,9 +154,9 @@
   }
   @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
 
-  /* ── Sidebar (agent health) ── */
+  /* ── Sidebar (agent health + git diff) ── */
   #sidebar {
-    width: 220px;
+    width: 260px;
     border-left: 1px solid var(--border);
     background: var(--surface);
     overflow-y: auto;
@@ -165,6 +165,40 @@
     flex-direction: column;
   }
   #sidebar.open { display: flex; }
+
+  /* git diff panel */
+  #diff-panel {
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #diff-panel .sidebar-title { border-bottom: 1px solid var(--border); }
+  #diff-content {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 8px 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--muted);
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  #diff-content.has-diff { color: var(--text); }
+
+  /* message queue badge */
+  #queue-badge {
+    display: none;
+    position: absolute;
+    top: -6px; right: -6px;
+    background: var(--warn);
+    color: #0d1117;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 10px;
+    padding: 1px 5px;
+    min-width: 16px;
+    text-align: center;
+  }
+  #send-wrap { position: relative; flex-shrink: 0; }
 
   .sidebar-title {
     padding: 12px 16px 8px;
@@ -323,12 +357,19 @@
   <div id="sidebar">
     <div class="sidebar-title">Agents</div>
     <div id="agent-list"><div style="padding:12px 16px;font-size:12px;color:var(--muted)">Loading…</div></div>
+    <div id="diff-panel">
+      <div class="sidebar-title">Git Diff</div>
+      <div id="diff-content">no changes yet</div>
+    </div>
   </div>
 </main>
 
 <footer>
   <textarea id="input-box" rows="1" placeholder="Ask anything about your codebase…" disabled></textarea>
-  <button id="send-btn" disabled>Send</button>
+  <div id="send-wrap">
+    <button id="send-btn" disabled>Send</button>
+    <span id="queue-badge">0</span>
+  </div>
 </footer>
 
 <div id="status-bar">not connected</div>
@@ -344,6 +385,7 @@ let streaming = null   // { el: Element, cursor: Element } | null
 let msgSeq = 0
 let sidebarOpen = false
 let pinnedAgent = null  // null = Auto, string = agent id
+let queueCount = 0
 
 // ── Auto-detect WS URL ────────────────────────────────────────────────────
 // When served via HTTP (e.g. http://localhost:18900/), derive WS URL from page host.
@@ -383,6 +425,8 @@ function connect() {
     setBar(`connected to ${url}`)
     enableInput(true)
     requestHealth()
+    // Restore session history on (re)connect
+    send({ type: 'history', id: 'restore' })
   }
 
   ws.onclose = () => {
@@ -432,6 +476,8 @@ function handleFrame(f) {
       finishStream(f.message)
       setBar(`✓ ${f.message?.agentUsed || ''} — ${f.message?.durationMs || 0}ms`)
       if (f.message?.agentUsed) flashLastUsed(f.message.agentUsed)
+      // Queue count decrements as turns complete
+      if (queueCount > 0) { queueCount--; updateQueueBadge() }
       break
 
     case 'agent_end':
@@ -454,6 +500,15 @@ function handleFrame(f) {
 
     case 'history':
       renderHistory(f.messages)
+      break
+
+    case 'diff':
+      renderDiff(f.diff)
+      break
+
+    case 'queued':
+      queueCount = f.queueLength || 0
+      updateQueueBadge()
       break
 
     case 'ok':
@@ -516,9 +571,8 @@ function appendError(msg) {
 function renderHistory(messages) {
   if (!messages || messages.length === 0) return
   const container = document.getElementById('messages')
-  // Clear welcome
-  const welcome = document.getElementById('welcome')
-  if (welcome) welcome.remove()
+  // Clear existing messages + welcome to avoid duplicates on reconnect
+  container.innerHTML = ''
 
   for (const m of messages) {
     const id = ++msgSeq
@@ -593,6 +647,32 @@ function setPinnedAgent(agentId) {
   input.placeholder = agentId
     ? `Ask ${agentId}…`
     : 'Ask anything about your codebase…'
+}
+
+function renderDiff(diff) {
+  const el = document.getElementById('diff-content')
+  if (!diff) {
+    el.textContent = 'no changes'
+    el.classList.remove('has-diff')
+    return
+  }
+  el.textContent = diff
+  el.classList.add('has-diff')
+  // Auto-open sidebar if diff arrives and sidebar is closed
+  if (!sidebarOpen) {
+    sidebarOpen = true
+    document.getElementById('sidebar').classList.add('open')
+  }
+}
+
+function updateQueueBadge() {
+  const badge = document.getElementById('queue-badge')
+  if (queueCount > 0) {
+    badge.textContent = queueCount
+    badge.style.display = 'block'
+  } else {
+    badge.style.display = 'none'
+  }
 }
 
 function flashLastUsed(agentId) {
