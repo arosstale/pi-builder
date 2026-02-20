@@ -86,7 +86,7 @@ export interface ClientMessage {
       | 'teams_list' | 'teams_create' | 'teams_spawn' | 'teams_task_update'
       | 'teams_message' | 'teams_broadcast' | 'teams_watch' | 'teams_delete'
       | 'thread_launch' | 'thread_list' | 'thread_kill' | 'thread_abort' | 'thread_steer'
-      | 'thread_preset'
+      | 'thread_preset' | 'thread_agents'
   id?: string
   message?: string
   // PTY fields
@@ -410,6 +410,9 @@ export class PiBuilderGateway {
         case 'thread_preset':
           this.handleThreadPreset(ws, frame)
           break
+        case 'thread_agents':
+          await this.handleThreadAgents(ws, frame)
+          break
         default:
           this.send(ws, { type: 'error', id: frame.id, message: `Unknown method: ${frame.type}` })
       }
@@ -632,6 +635,62 @@ export class PiBuilderGateway {
     const spec = THREAD_PRESETS[presetName as PresetKey](arg ?? '')
     const command = buildThreadCommand(spec)
     this.send(ws, { type: 'thread_preset_preview', id, preset: presetName, spec, command })
+  }
+
+  private async handleThreadAgents(ws: WebSocket, frame: ClientMessage): Promise<void> {
+    try {
+      const agents = await this.discoverPiAgents()
+      this.send(ws, { type: 'thread_agents', id: frame.id, agents })
+    } catch (err) {
+      this.send(ws, { type: 'error', id: frame.id, message: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  private async discoverPiAgents(): Promise<Array<{ name: string; description: string; source: string; model?: string }>> {
+    const { readdir, readFile } = await import('node:fs/promises')
+    const { homedir } = await import('node:os')
+    const { join, dirname } = await import('node:path')
+    const { createRequire } = await import('node:module')
+
+    const results: Array<{ name: string; description: string; source: string; model?: string }> = []
+
+    const parseFrontmatter = (text: string): Record<string, string> => {
+      const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+      if (!m) return {}
+      return Object.fromEntries(
+        m[1].split('\n').filter(l => l.includes(':')).map(l => {
+          const idx = l.indexOf(':')
+          return [l.slice(0, idx).trim(), l.slice(idx + 1).trim()]
+        })
+      )
+    }
+
+    const loadDir = async (dir: string, source: string) => {
+      try {
+        const files = await readdir(dir)
+        for (const f of files.filter(f => f.endsWith('.md'))) {
+          try {
+            const text = await readFile(join(dir, f), 'utf8')
+            const fm = parseFrontmatter(text)
+            if (fm.name) results.push({ name: fm.name, description: fm.description ?? '', source, model: fm.model })
+          } catch { /* skip bad file */ }
+        }
+      } catch { /* dir missing */ }
+    }
+
+    // User agents (~/.pi/agent/agents/)
+    await loadDir(join(homedir(), '.pi', 'agent', 'agents'), 'user')
+
+    // pi-subagents builtin agents
+    try {
+      const req = createRequire(import.meta.url)
+      const piSubagentsPkg = req.resolve('pi-subagents/package.json').replace(/package\.json$/, '')
+      await loadDir(join(piSubagentsPkg, 'agents'), 'builtin')
+    } catch { /* pi-subagents not installed */ }
+
+    // Deduplicate by name (user agents override builtin)
+    const seen = new Set<string>()
+    return results.filter(a => { if (seen.has(a.name)) return false; seen.add(a.name); return true })
   }
 
   // ---------------------------------------------------------------------------

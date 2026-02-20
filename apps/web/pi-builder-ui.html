@@ -1628,6 +1628,7 @@ window.threadLaunch = function() {
 
 window.threadRefresh = function() {
   send({ type: 'thread_list', id: 'thr-list' })
+  send({ type: 'thread_agents', id: 'thr-agents' })
 }
 
 window.threadKill = function(id) {
@@ -1740,7 +1741,29 @@ function handleThreadFrame(f) {
     case 'thread_preset_preview':
       handleThreadPresetPreview(f)
       break
+    case 'thread_agents':
+      populateAgentInputs(f.agents || [])
+      break
   }
+}
+
+function populateAgentInputs(agents) {
+  const input = document.getElementById('thread-agent-input')
+  if (!input) return
+  // Build datalist for autocomplete
+  let dl = document.getElementById('thread-agent-datalist')
+  if (!dl) {
+    dl = document.createElement('datalist')
+    dl.id = 'thread-agent-datalist'
+    input.setAttribute('list', 'thread-agent-datalist')
+    input.parentNode.insertBefore(dl, input.nextSibling)
+  }
+  dl.innerHTML = agents.map(a =>
+    `<option value="${escHtml(a.name)}" label="${escHtml(a.description)}">`
+  ).join('')
+  input.placeholder = agents.length
+    ? `agent: ${agents.map(a => a.name).join(', ')}`
+    : 'agent (scout/planner/worker…)'
 }
 </script>
 
