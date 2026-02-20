@@ -42,6 +42,7 @@ import {
   type ChatMessage,
   type TurnResult,
 } from '../orchestration/orchestrator-service'
+import { PtyManager } from './pty-manager'
 
 // Resolve the web UI HTML file — look relative to this module, then relative to CWD
 function resolveUiPath(): string {
@@ -76,8 +77,17 @@ export interface GatewayConfig {
 
 export interface ClientMessage {
   type: 'send' | 'health' | 'agents' | 'history' | 'clear' | 'diff' | 'queue'
+      | 'pty_spawn' | 'pty_input' | 'pty_resize' | 'pty_kill' | 'pty_list'
   id?: string
   message?: string
+  // PTY fields
+  sessionId?: string
+  agentId?: string
+  cmd?: string[]
+  cols?: number
+  rows?: number
+  data?: string
+  cwd?: string
 }
 
 export interface ServerFrame {
@@ -95,6 +105,7 @@ export class PiBuilderGateway {
   private wss: WebSocketServer
   private orchestrator!: OrchestratorService
   private clients = new Set<WebSocket>()
+  private ptyManager = new PtyManager()
 
   constructor(config: GatewayConfig = {}) {
     this.config = {
@@ -206,6 +217,7 @@ export class PiBuilderGateway {
   }
 
   async stop(): Promise<void> {
+    this.ptyManager.killAll()
     await this.orchestrator.close()
     await new Promise<void>((resolve, reject) => {
       this.wss.close((err) => (err ? reject(err) : resolve()))
@@ -277,6 +289,21 @@ export class PiBuilderGateway {
         case 'queue':
           this.handleQueue(ws, frame)
           break
+        case 'pty_spawn':
+          await this.handlePtySpawn(ws, frame)
+          break
+        case 'pty_input':
+          this.handlePtyInput(ws, frame)
+          break
+        case 'pty_resize':
+          this.handlePtyResize(ws, frame)
+          break
+        case 'pty_kill':
+          this.handlePtyKill(ws, frame)
+          break
+        case 'pty_list':
+          this.handlePtyList(ws, frame)
+          break
         default:
           this.send(ws, { type: 'error', id: frame.id, message: `Unknown method: ${frame.type}` })
       }
@@ -320,6 +347,77 @@ export class PiBuilderGateway {
     this.orchestrator.clearHistory()
     this.send(ws, { type: 'ok', id: frame.id, method: 'clear' })
   }
+
+  // ---------------------------------------------------------------------------
+  // PTY handlers
+  // ---------------------------------------------------------------------------
+
+  private async handlePtySpawn(ws: WebSocket, frame: ClientMessage): Promise<void> {
+    const { id, agentId, cmd, cwd, cols, rows } = frame
+    if (!agentId || !cmd?.length) {
+      this.send(ws, { type: 'error', id, message: 'pty_spawn requires agentId and cmd' })
+      return
+    }
+    const sessionId = `pty-${agentId}-${Date.now()}`
+    try {
+      const session = await this.ptyManager.spawn({
+        id: sessionId,
+        agentId,
+        cmd,
+        cwd: cwd ?? this.config.orchestrator?.workDir ?? process.cwd(),
+        cols: cols ?? 220,
+        rows: rows ?? 50,
+      })
+
+      // Stream PTY output to all clients
+      this.ptyManager.on('data', (sid: string, chunk: string) => {
+        if (sid === sessionId) {
+          this.broadcast({ type: 'pty_data', sessionId, agentId, data: chunk })
+        }
+      })
+      this.ptyManager.on('exit', (sid: string, exitCode: number) => {
+        if (sid === sessionId) {
+          this.broadcast({ type: 'pty_exit', sessionId, agentId, exitCode })
+        }
+      })
+
+      this.send(ws, { type: 'pty_spawned', id, sessionId, agentId, cols: session.cols, rows: session.rows })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this.send(ws, { type: 'error', id, message: `PTY spawn failed: ${msg}` })
+    }
+  }
+
+  private handlePtyInput(_ws: WebSocket, frame: ClientMessage): void {
+    const { sessionId, data } = frame
+    if (!sessionId || !data) return
+    this.ptyManager.get(sessionId)?.write(data)
+  }
+
+  private handlePtyResize(_ws: WebSocket, frame: ClientMessage): void {
+    const { sessionId, cols, rows } = frame
+    if (!sessionId || !cols || !rows) return
+    this.ptyManager.get(sessionId)?.resize(cols, rows)
+  }
+
+  private handlePtyKill(_ws: WebSocket, frame: ClientMessage): void {
+    const { sessionId } = frame
+    if (!sessionId) return
+    this.ptyManager.get(sessionId)?.kill()
+  }
+
+  private handlePtyList(ws: WebSocket, frame: ClientMessage): void {
+    const sessions = this.ptyManager.list().map(s => ({
+      sessionId: s.id,
+      agentId: s.agentId,
+      alive: s.alive,
+      cols: s.cols,
+      rows: s.rows,
+    }))
+    this.send(ws, { type: 'pty_list', id: frame.id, sessions })
+  }
+
+  // ---------------------------------------------------------------------------
 
   private async handleDiff(ws: WebSocket, frame: ClientMessage): Promise<void> {
     const diff = await this.getGitDiff()

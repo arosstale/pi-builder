@@ -329,6 +329,138 @@
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── View tabs ── */
+  .view-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    padding: 0 20px;
+  }
+  .view-tab {
+    font-size: 12px;
+    padding: 7px 14px;
+    cursor: pointer;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    user-select: none;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .view-tab:hover { color: var(--text); }
+  .view-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── Terminal pane ── */
+  #terminal-pane {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+    background: #0d0d0d;
+  }
+  #terminal-pane.visible { display: flex; }
+
+  #terminal-agent-tabs {
+    display: flex;
+    gap: 0;
+    background: #111;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  #terminal-agent-tabs::-webkit-scrollbar { display: none; }
+
+  .term-tab {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    padding: 6px 14px;
+    cursor: pointer;
+    color: var(--muted);
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+  }
+  .term-tab:hover { background: #1a1a1a; color: var(--text); }
+  .term-tab.active { background: #0d0d0d; color: var(--accent); }
+  .term-tab .term-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    flex-shrink: 0;
+  }
+  .term-tab .term-dot.dead { background: var(--error); }
+  .term-tab .term-close {
+    opacity: 0.5;
+    font-size: 10px;
+    margin-left: 4px;
+    line-height: 1;
+  }
+  .term-tab .term-close:hover { opacity: 1; color: var(--error); }
+
+  .term-add-btn {
+    font-size: 18px;
+    padding: 0 12px;
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .term-add-btn:hover { color: var(--accent); }
+
+  #terminal-containers {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  .term-container {
+    position: absolute;
+    inset: 0;
+    padding: 8px;
+    display: none;
+  }
+  .term-container.active { display: block; }
+
+  #terminal-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    background: #111;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+  }
+  #terminal-toolbar input {
+    flex: 1;
+    background: #0d0d0d;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 8px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  #terminal-toolbar input:focus { outline: none; border-color: var(--accent); }
+  #terminal-toolbar button {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 10px;
+    color: var(--text);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  #terminal-toolbar button:hover { border-color: var(--accent); color: var(--accent); }
 </style>
 </head>
 <body>
@@ -343,6 +475,11 @@
 </header>
 
 <div id="agent-bar"></div>
+
+<div class="view-tabs">
+  <div class="view-tab active" id="tab-chat" onclick="switchView('chat')">Chat</div>
+  <div class="view-tab" id="tab-terminal" onclick="switchView('terminal')">Terminal</div>
+</div>
 
 <main>
   <div id="messages">
@@ -363,6 +500,20 @@
     </div>
   </div>
 </main>
+
+<!-- Terminal pane (ghostty-web) -->
+<div id="terminal-pane">
+  <div id="terminal-agent-tabs">
+    <div class="term-add-btn" onclick="spawnTerminal()" title="New terminal">+</div>
+  </div>
+  <div id="terminal-containers"></div>
+  <div id="terminal-toolbar">
+    <span>cmd:</span>
+    <input id="term-cmd-input" placeholder="pi  /  claude  /  aider  /  shell" value="pi">
+    <button onclick="spawnTerminal()">Spawn</button>
+    <span id="term-status" style="margin-left:auto">no session</span>
+  </div>
+</div>
 
 <footer>
   <textarea id="input-box" rows="1" placeholder="Ask anything about your codebase…" disabled></textarea>
@@ -780,6 +931,241 @@ document.getElementById('ws-url').addEventListener('change', () => {
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 connect()
+</script>
+
+<!-- ── Terminal tab (ghostty-web) ───────────────────────────────────────── -->
+<script type="module">
+// ghostty-web from unpkg — xterm.js compatible API, WASM VT100
+import { init, Terminal } from 'https://unpkg.com/ghostty-web@0.4.0/dist/ghostty-web.js'
+
+// State
+const termSessions = new Map() // sessionId → { term, container, tab, agentId, alive }
+let activeSessionId = null
+let ghosttyReady = false
+
+// Init WASM once
+init().then(() => {
+  ghosttyReady = true
+  console.log('[ghostty-web] WASM ready')
+}).catch(err => {
+  console.warn('[ghostty-web] WASM init failed, falling back to xterm.js if available:', err)
+})
+
+// ── View switching ──────────────────────────────────────────────────────
+window.switchView = function(view) {
+  document.getElementById('tab-chat').classList.toggle('active', view === 'chat')
+  document.getElementById('tab-terminal').classList.toggle('active', view === 'terminal')
+
+  const main = document.querySelector('main')
+  const termPane = document.getElementById('terminal-pane')
+  const footer = document.querySelector('footer')
+
+  if (view === 'terminal') {
+    main.style.display = 'none'
+    footer.style.display = 'none'
+    termPane.classList.add('visible')
+    // fit active terminal on show
+    if (activeSessionId) fitTerm(activeSessionId)
+  } else {
+    main.style.display = ''
+    footer.style.display = ''
+    termPane.classList.remove('visible')
+  }
+}
+
+// ── Spawn terminal ──────────────────────────────────────────────────────
+window.spawnTerminal = function() {
+  if (!ghosttyReady) { alert('ghostty-web WASM not ready yet — wait a moment'); return }
+  if (!window.ws || window.ws.readyState !== WebSocket.OPEN) {
+    alert('Not connected to gateway'); return
+  }
+
+  const cmdRaw = document.getElementById('term-cmd-input').value.trim() || 'pi'
+  // Map friendly names to real commands
+  const cmdMap = {
+    pi:     ['pi', '--no-color'],
+    claude: ['claude', '--print'],
+    aider:  ['aider', '--no-pretty'],
+    shell:  process?.platform === 'win32' ? ['cmd.exe'] : ['/bin/bash'],
+  }
+  const cmd = cmdMap[cmdRaw] ?? cmdRaw.split(/\s+/)
+  const agentId = cmdRaw
+
+  const id = `req-${Date.now()}`
+  window.ws.send(JSON.stringify({ type: 'pty_spawn', id, agentId, cmd }))
+  document.getElementById('term-status').textContent = `spawning ${agentId}…`
+}
+
+// ── Create terminal UI for a session ───────────────────────────────────
+function createTerminalForSession(sessionId, agentId, cols, rows) {
+  // Container
+  const containers = document.getElementById('terminal-containers')
+  const container = document.createElement('div')
+  container.className = 'term-container'
+  container.id = `tc-${sessionId}`
+  containers.appendChild(container)
+
+  // Terminal instance
+  const term = new Terminal({
+    cursorBlink: true,
+    fontSize: 13,
+    fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+    theme: {
+      background: '#0d0d0d',
+      foreground: '#e6edf3',
+      cursor: '#58a6ff',
+      selectionBackground: '#264f78',
+      black: '#0d1117', brightBlack: '#6e7681',
+      red: '#f85149',   brightRed: '#f85149',
+      green: '#3fb950', brightGreen: '#3fb950',
+      yellow: '#d29922',brightYellow: '#e3b341',
+      blue: '#58a6ff',  brightBlue: '#79c0ff',
+      magenta: '#bc8cff',brightMagenta: '#d2a8ff',
+      cyan: '#76e3ea',  brightCyan: '#b3f0ff',
+      white: '#b1bac4', brightWhite: '#f0f6fc',
+    },
+    cols: cols || 220,
+    rows: rows || 50,
+    scrollback: 50000,
+  })
+
+  term.open(container)
+
+  // Forward user input to PTY via WebSocket
+  term.onData((data) => {
+    if (window.ws?.readyState === WebSocket.OPEN) {
+      window.ws.send(JSON.stringify({ type: 'pty_input', sessionId, data }))
+    }
+  })
+
+  // Resize
+  term.onResize(({ cols, rows }) => {
+    if (window.ws?.readyState === WebSocket.OPEN) {
+      window.ws.send(JSON.stringify({ type: 'pty_resize', sessionId, cols, rows }))
+    }
+  })
+
+  // Tab
+  const tabs = document.getElementById('terminal-agent-tabs')
+  const addBtn = tabs.querySelector('.term-add-btn')
+  const tab = document.createElement('div')
+  tab.className = 'term-tab'
+  tab.dataset.sessionId = sessionId
+  tab.innerHTML = `
+    <span class="term-dot" id="dot-${sessionId}"></span>
+    <span>${agentId}</span>
+    <span class="term-close" onclick="killTerminal('${sessionId}',event)">✕</span>
+  `
+  tab.addEventListener('click', (e) => {
+    if (!e.target.classList.contains('term-close')) activateTerminal(sessionId)
+  })
+  tabs.insertBefore(tab, addBtn)
+
+  termSessions.set(sessionId, { term, container, tab, agentId, alive: true })
+  activateTerminal(sessionId)
+
+  document.getElementById('term-status').textContent = `${agentId} running`
+}
+
+function activateTerminal(sessionId) {
+  activeSessionId = sessionId
+  // Hide all containers, show this one
+  document.querySelectorAll('.term-container').forEach(c => c.classList.remove('active'))
+  document.querySelectorAll('.term-tab').forEach(t => t.classList.remove('active'))
+  const s = termSessions.get(sessionId)
+  if (!s) return
+  s.container.classList.add('active')
+  s.tab.classList.add('active')
+  fitTerm(sessionId)
+}
+
+function fitTerm(sessionId) {
+  const s = termSessions.get(sessionId)
+  if (!s) return
+  // Basic fit: measure container, compute cols/rows from char size
+  const container = s.container
+  const rect = container.getBoundingClientRect()
+  if (rect.width === 0) return
+  // ghostty-web terminal canvas — approximate char dims
+  const charW = 7.8   // approximate for 13px monospace
+  const charH = 16
+  const cols = Math.max(20, Math.floor((rect.width - 16) / charW))
+  const rows = Math.max(5,  Math.floor((rect.height - 16) / charH))
+  s.term.resize(cols, rows)
+}
+
+window.killTerminal = function(sessionId, e) {
+  e?.stopPropagation()
+  if (window.ws?.readyState === WebSocket.OPEN) {
+    window.ws.send(JSON.stringify({ type: 'pty_kill', sessionId }))
+  }
+  const s = termSessions.get(sessionId)
+  if (s) {
+    s.term.dispose()
+    s.container.remove()
+    s.tab.remove()
+    termSessions.delete(sessionId)
+  }
+  // Activate another session if available
+  const remaining = [...termSessions.keys()]
+  if (remaining.length > 0) activateTerminal(remaining[remaining.length - 1])
+  else { activeSessionId = null; document.getElementById('term-status').textContent = 'no session' }
+}
+
+// ── Handle PTY frames from WS ───────────────────────────────────────────
+// Hook into the existing onmessage — wait for ws to be defined
+function hookPtyFrames() {
+  if (!window.ws) { setTimeout(hookPtyFrames, 200); return }
+
+  const origOnMessage = window.ws.onmessage
+  window.ws.onmessage = (event) => {
+    // Let the existing handler run first
+    if (origOnMessage) origOnMessage.call(window.ws, event)
+
+    let f
+    try { f = JSON.parse(event.data) } catch { return }
+
+    switch (f.type) {
+      case 'pty_spawned':
+        createTerminalForSession(f.sessionId, f.agentId, f.cols, f.rows)
+        // Switch to terminal view automatically
+        window.switchView('terminal')
+        break
+
+      case 'pty_data': {
+        const s = termSessions.get(f.sessionId)
+        if (s) s.term.write(f.data)
+        break
+      }
+
+      case 'pty_exit': {
+        const s = termSessions.get(f.sessionId)
+        if (s) {
+          s.alive = false
+          s.term.write(`\r\n\x1b[31m[process exited with code ${f.exitCode}]\x1b[0m\r\n`)
+          document.getElementById(`dot-${f.sessionId}`)?.classList.add('dead')
+          document.getElementById('term-status').textContent = `${s.agentId} exited (${f.exitCode})`
+        }
+        break
+      }
+    }
+  }
+}
+
+// Re-hook whenever WS reconnects (the main script rebinds ws)
+const _origConnect = window.connect
+window.connect = function() {
+  _origConnect?.()
+  setTimeout(hookPtyFrames, 500)
+}
+
+// Also hook now if already connected
+hookPtyFrames()
+
+// Resize observer for terminal fitting
+new ResizeObserver(() => {
+  if (activeSessionId) fitTerm(activeSessionId)
+}).observe(document.getElementById('terminal-containers'))
 </script>
 </body>
 </html>
