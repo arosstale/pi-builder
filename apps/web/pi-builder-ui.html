@@ -1450,7 +1450,8 @@ function handleBridgeEvent(f) {
   let text = ''
   let color = 'var(--muted)'
 
-  switch (f.type) {
+  // Gateway re-frames as { type:'bridge_event', event:'<original type>', ...rest }
+  switch (f.event) {
     case 'session_start':
       icon = '🟢'; text = `pi session started`; color = 'var(--success)'; break
     case 'session_shutdown':

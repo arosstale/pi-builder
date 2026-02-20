@@ -319,3 +319,165 @@ describe('rpc_kill on unknown session', () => {
     ws.close()
   })
 })
+
+// ---------------------------------------------------------------------------
+// diff_full — full unified patch
+// ---------------------------------------------------------------------------
+
+describe('diff_full', () => {
+  it('returns diff_full with patch and stat fields', async () => {
+    const { ws, next, send } = await connectWithQueue(port)
+    await next() // hello
+
+    send({ type: 'diff_full', id: 'df1' })
+    const f = await next(4000)
+
+    expect(f.type).toBe('diff_full')
+    expect(f.id).toBe('df1')
+    // patch is string|null, stat is string|null — both present
+    expect('patch' in f).toBe(true)
+    expect('stat' in f).toBe(true)
+    ws.close()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// thread_list — Threads protocol
+// ---------------------------------------------------------------------------
+
+describe('thread_list', () => {
+  it('returns thread_list with threads array and presets array', async () => {
+    const { ws, next, send } = await connectWithQueue(port)
+    await next() // hello
+
+    send({ type: 'thread_list', id: 'tl1' })
+    const f = await next(3000)
+
+    expect(f.type).toBe('thread_list')
+    expect(Array.isArray(f.threads)).toBe(true)
+    expect(Array.isArray(f.presets)).toBe(true)
+    // presets should include the 5 named presets
+    const names = (f.presets as Array<{name: string}>).map(p => p.name)
+    expect(names).toContain('codeReview')
+    expect(names).toContain('planAndBuild')
+    expect(names).toContain('debugFusion')
+    ws.close()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// thread_agents — agent discovery
+// ---------------------------------------------------------------------------
+
+describe('thread_agents', () => {
+  it('returns thread_agents with agents array', async () => {
+    const { ws, next, send } = await connectWithQueue(port)
+    await next() // hello
+
+    send({ type: 'thread_agents', id: 'ta1' })
+    const f = await next(4000)
+
+    expect(f.type).toBe('thread_agents')
+    expect(Array.isArray(f.agents)).toBe(true)
+    // Each agent has name, description, source
+    for (const a of (f.agents as Array<{name: string; source: string}>) ) {
+      expect(typeof a.name).toBe('string')
+      expect(['user', 'builtin']).toContain(a.source)
+    }
+    ws.close()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// thread_async_list — async background jobs
+// ---------------------------------------------------------------------------
+
+describe('thread_async_list', () => {
+  it('returns thread_async_list with jobs array (empty when no runs)', async () => {
+    const { ws, next, send } = await connectWithQueue(port)
+    await next() // hello
+
+    send({ type: 'thread_async_list', id: 'tal1' })
+    const f = await next(3000)
+
+    expect(f.type).toBe('thread_async_list')
+    expect(Array.isArray(f.jobs)).toBe(true)
+    ws.close()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// thread_preset — preview command without launching
+// ---------------------------------------------------------------------------
+
+describe('thread_preset', () => {
+  it('returns preview for codeReview preset with arg', async () => {
+    const { ws, next, send } = await connectWithQueue(port)
+    await next() // hello
+
+    send({ type: 'thread_preset', id: 'tp1', preset: 'codeReview', arg: 'src/auth.ts' })
+    const f = await next(3000)
+
+    expect(f.type).toBe('thread_preset_preview')
+    expect(f.preset).toBe('codeReview')
+    expect(typeof f.command).toBe('string')
+    expect((f.command as string).length).toBeGreaterThan(0)
+    expect(f.spec).toBeDefined()
+    ws.close()
+  })
+
+  it('returns error for unknown preset', async () => {
+    const { ws, next, send } = await connectWithQueue(port)
+    await next() // hello
+
+    send({ type: 'thread_preset', id: 'tp2', preset: 'nonExistentPreset' })
+    const f = await next(3000)
+
+    expect(f.type).toBe('error')
+    expect((f.message as string).toLowerCase()).toMatch(/unknown preset/i)
+    ws.close()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// bridge endpoint — HTTP POST /bridge
+// ---------------------------------------------------------------------------
+
+describe('/bridge HTTP endpoint', () => {
+  it('accepts POST /bridge and broadcasts bridge_event', async () => {
+    const { ws, next } = await connectWithQueue(port)
+    await next() // hello
+
+    // Post a bridge event via HTTP
+    const res = await fetch(`http://127.0.0.1:${port}/bridge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'turn_end', sessionId: 'test-session', turnIndex: 1, summary: 'test' }),
+    })
+    expect(res.ok).toBe(true)
+
+    const f = await next(3000)
+    expect(f.type).toBe('bridge_event')
+    expect(f.event).toBe('turn_end')
+    expect(f.sessionId).toBe('test-session')
+    expect(f.turnIndex).toBe(1)
+    ws.close()
+  })
+
+  it('GET /health returns ok', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/health`)
+    expect(res.ok).toBe(true)
+    const body = await res.json() as Record<string, unknown>
+    expect(body.ok).toBe(true)
+    expect(typeof body.clients).toBe('number')
+  })
+
+  it('rejects malformed JSON with 400', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/bridge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: 'not json {{{',
+    })
+    expect(res.status).toBe(400)
+  })
+})

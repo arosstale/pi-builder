@@ -217,8 +217,9 @@ export class PiBuilderGateway {
     req.on('end', () => {
       try {
         const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
-        // Broadcast to all WS clients as a 'bridge_event' frame
-        this.broadcast({ type: 'bridge_event', ...body })
+        // Broadcast to all WS clients — keep body fields, but always type='bridge_event'
+        const { type: bridgeType, ...rest } = body
+        this.broadcast({ type: 'bridge_event', event: bridgeType, ...rest })
         res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ ok: true }))
       } catch {
