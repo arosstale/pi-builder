@@ -352,6 +352,240 @@
   .view-tab:hover { color: var(--text); }
   .view-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
+  /* ── RPC Sessions pane ── */
+  #rpc-pane, #teams-pane {
+    display: none;
+    flex: 1;
+    overflow: hidden;
+    flex-direction: column;
+  }
+  #rpc-pane.visible, #teams-pane.visible { display: flex; }
+
+  .pane-toolbar {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .pane-toolbar input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 12px;
+    padding: 4px 8px;
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-mono);
+  }
+  .pane-toolbar input:focus { outline: none; border-color: var(--accent); }
+  .pane-toolbar button {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 4px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .pane-toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+  .pane-toolbar button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    font-weight: 600;
+  }
+  .pane-toolbar button.primary:hover { background: #79c0ff; }
+  .pane-toolbar select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+
+  .pane-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    gap: 0;
+  }
+
+  /* Left: session/team list */
+  .pane-list {
+    width: 220px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+  }
+  .pane-list-header {
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .pane-list-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .pane-list-item:hover { background: var(--bg); }
+  .pane-list-item.active { background: #1c2128; color: var(--accent); }
+  .pane-list-item .item-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--success);
+  }
+  .pane-list-item .item-dot.idle { background: var(--warn); }
+  .pane-list-item .item-dot.dead { background: var(--muted); }
+  .pane-list-meta { font-size: 11px; color: var(--muted); margin-left: auto; }
+
+  /* Right: event stream / team detail */
+  .pane-detail {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .pane-detail-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .pane-detail-header .session-id {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent);
+  }
+  .event-stream {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-size: 13px;
+    font-family: var(--font-mono);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .event-stream::-webkit-scrollbar { width: 6px; }
+  .event-stream::-webkit-scrollbar-track { background: transparent; }
+  .event-stream::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .ev { display: flex; gap: 8px; align-items: flex-start; line-height: 1.5; }
+  .ev-type {
+    flex-shrink: 0; width: 140px;
+    font-size: 11px; font-weight: 600;
+    padding: 1px 6px; border-radius: 4px;
+    text-align: center;
+  }
+  .ev-type.agent_start   { background:#0d2a0d; color:#3fb950; }
+  .ev-type.agent_end     { background:#0d2a0d; color:#3fb950; }
+  .ev-type.message_update{ background:#0d1f3c; color:#58a6ff; }
+  .ev-type.tool_start    { background:#2a1d0d; color:#d29922; }
+  .ev-type.tool_end      { background:#2a1d0d; color:#d29922; }
+  .ev-type.turn_end      { background:#1a0d2a; color:#bc8cff; }
+  .ev-type.error         { background:#2a0d0d; color:#f85149; }
+  .ev-body { flex: 1; color: var(--text); word-break: break-all; white-space: pre-wrap; }
+
+  /* Prompt bar at bottom of detail */
+  .pane-prompt {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+  .pane-prompt textarea {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: var(--font-sans);
+    padding: 8px 10px;
+    resize: none;
+    min-height: 38px;
+    max-height: 120px;
+  }
+  .pane-prompt textarea:focus { outline: none; border-color: var(--accent); }
+
+  /* Teams: task list inside detail */
+  .task-list { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .task-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+  .task-card.completed { border-color: #238636; opacity: 0.7; }
+  .task-card.in_progress { border-color: var(--accent); }
+  .task-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .task-status {
+    font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px;
+  }
+  .task-status.pending    { background: #21262d; color: var(--muted); }
+  .task-status.in_progress{ background: #0d1f3c; color: var(--accent); }
+  .task-status.completed  { background: #0d2a0d; color: var(--success); }
+  .task-status.deleted    { background: #2a0d0d; color: var(--error); }
+  .task-owner { font-size: 11px; color: var(--muted); margin-left: auto; }
+  .task-subject { font-weight: 600; }
+  .task-desc { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .member-list { padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
+  .member-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 12px; font-size: 13px;
+  }
+  .member-type { font-size: 11px; color: var(--muted); margin-left: auto; font-family: var(--font-mono); }
+
+  .progress-bar-wrap {
+    margin: 0 16px 12px; height: 6px;
+    background: var(--surface); border-radius: 3px; overflow: hidden;
+  }
+  .progress-bar { height: 100%; background: var(--accent); transition: width 0.4s; }
+  .progress-label { text-align: right; font-size: 11px; color: var(--muted); padding: 0 16px 8px; }
+
+  /* Team preset buttons */
+  .preset-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+    padding: 12px 16px;
+  }
+  .preset-btn {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 6px;
+    font-size: 11px; color: var(--text); cursor: pointer; text-align: center;
+  }
+  .preset-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .preset-btn strong { display: block; font-size: 12px; margin-bottom: 2px; }
+
   /* ── Terminal pane ── */
   #terminal-pane {
     display: none;
@@ -477,8 +711,10 @@
 <div id="agent-bar"></div>
 
 <div class="view-tabs">
-  <div class="view-tab active" id="tab-chat" onclick="switchView('chat')">Chat</div>
-  <div class="view-tab" id="tab-terminal" onclick="switchView('terminal')">Terminal</div>
+  <div class="view-tab active" id="tab-chat"     onclick="switchView('chat')">Chat</div>
+  <div class="view-tab"        id="tab-rpc"      onclick="switchView('rpc')">Sessions</div>
+  <div class="view-tab"        id="tab-teams"    onclick="switchView('teams')">Teams</div>
+  <div class="view-tab"        id="tab-terminal" onclick="switchView('terminal')">Terminal</div>
 </div>
 
 <main>
@@ -500,6 +736,85 @@
     </div>
   </div>
 </main>
+
+<!-- ── RPC Sessions pane ─────────────────────────────────────────────────── -->
+<div id="rpc-pane">
+  <div class="pane-toolbar">
+    <input id="rpc-cwd-input" placeholder="cwd (default: gateway cwd)" style="max-width:280px">
+    <button class="primary" onclick="rpcNewSession()">＋ New Session</button>
+    <button onclick="rpcRefreshList()">↺ Refresh</button>
+    <span id="rpc-session-count" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+  </div>
+  <div class="pane-body">
+    <div class="pane-list">
+      <div class="pane-list-header">Sessions</div>
+      <div id="rpc-session-list"><div style="padding:14px;font-size:12px;color:var(--muted)">No sessions yet</div></div>
+    </div>
+    <div class="pane-detail">
+      <div class="pane-detail-header">
+        <span id="rpc-detail-label" style="color:var(--muted)">Select a session</span>
+        <span id="rpc-detail-id" class="session-id"></span>
+        <span style="flex:1"></span>
+        <button id="rpc-abort-btn" onclick="rpcAbort()" style="display:none">⏹ Abort</button>
+        <button id="rpc-kill-btn"  onclick="rpcKill()"  style="display:none;color:var(--error)">✕ Kill</button>
+      </div>
+      <div class="event-stream" id="rpc-event-stream">
+        <div class="ev"><span class="ev-type message_update">info</span><span class="ev-body" style="color:var(--muted)">Create or select a session to start a pi conversation.</span></div>
+      </div>
+      <div class="pane-prompt">
+        <textarea id="rpc-prompt-input" placeholder="Type a message… (Enter to send, Shift+Enter for newline)" rows="1" disabled></textarea>
+        <button class="primary" id="rpc-send-btn" disabled onclick="rpcSend()">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Agent Teams pane ──────────────────────────────────────────────────── -->
+<div id="teams-pane">
+  <div class="pane-toolbar">
+    <select id="teams-preset-select">
+      <option value="">— Preset —</option>
+      <option value="review">review (security+perf+arch)</option>
+      <option value="debug">debug (3 investigators)</option>
+      <option value="feature">feature (lead+2 implementers)</option>
+      <option value="fullstack">fullstack (lead+frontend+backend+tests)</option>
+      <option value="research">research (3 researchers)</option>
+      <option value="security">security (OWASP+auth+deps+secrets)</option>
+      <option value="migration">migration (lead+2 impl+verifier)</option>
+    </select>
+    <input id="teams-name-input" placeholder="team-name (optional)" style="max-width:180px">
+    <button class="primary" onclick="teamsCreate()">＋ Create Team</button>
+    <button onclick="teamsRefresh()">↺ Refresh</button>
+  </div>
+  <div class="pane-body">
+    <div class="pane-list">
+      <div class="pane-list-header">Teams</div>
+      <div id="teams-list"><div style="padding:14px;font-size:12px;color:var(--muted)">No teams yet</div></div>
+    </div>
+    <div class="pane-detail" id="teams-detail">
+      <div class="pane-detail-header">
+        <span id="teams-detail-name" style="color:var(--muted)">Select a team</span>
+        <span style="flex:1"></span>
+        <button id="teams-spawn-btn" onclick="teamsSpawn()" style="display:none">▶ Spawn claude</button>
+        <button id="teams-watch-btn" onclick="teamsToggleWatch()" style="display:none">👁 Watch</button>
+      </div>
+      <!-- Members -->
+      <div id="teams-members" class="member-list"></div>
+      <!-- Progress bar -->
+      <div class="progress-bar-wrap"><div class="progress-bar" id="teams-progress-bar" style="width:0%"></div></div>
+      <div class="progress-label" id="teams-progress-label">0 / 0 tasks</div>
+      <!-- Tasks -->
+      <div id="teams-tasks" class="task-list"><div style="color:var(--muted);font-size:12px">No tasks</div></div>
+      <!-- Send message to agent -->
+      <div class="pane-prompt" id="teams-msg-bar" style="display:none">
+        <select id="teams-msg-to" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:4px 8px"></select>
+        <textarea id="teams-msg-input" placeholder="Message to teammate…" rows="1"></textarea>
+        <button class="primary" onclick="teamsSendMsg()">Send</button>
+        <button onclick="teamsBroadcast()">📢 Broadcast</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Terminal pane (ghostty-web) -->
 <div id="terminal-pane">
@@ -663,6 +978,26 @@ function handleFrame(f) {
       break
 
     case 'ok':
+      break
+
+    // RPC session frames
+    case 'rpc_created':
+    case 'rpc_event':
+    case 'rpc_idle':
+    case 'rpc_killed':
+    case 'rpc_sessions':
+      handleRpcFrame(f)
+      break
+
+    // Agent Teams frames
+    case 'teams_list':
+    case 'teams_created':
+    case 'teams_task':
+    case 'teams_tasks':
+    case 'teams_output':
+    case 'teams_exit':
+    case 'teams_message':
+      handleTeamsFrame(f)
       break
   }
 }
@@ -933,6 +1268,380 @@ document.getElementById('ws-url').addEventListener('change', () => {
 connect()
 </script>
 
+<!-- ── RPC Sessions tab ─────────────────────────────────────────────────── -->
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const rpcSessions = new Map()  // sessionId → { alive, events: [] }
+let activeRpcSession = null
+
+// ── switchView — canonical implementation ──────────────────────────────────
+// Defines the full tab-switching logic. Terminal module patches on top for fit.
+window.switchView = function(view) {
+  const isChat  = view === 'chat'
+  const isRpc   = view === 'rpc'
+  const isTeams = view === 'teams'
+  const isTerm  = view === 'terminal'
+
+  // Tab active states
+  document.getElementById('tab-chat')    ?.classList.toggle('active', isChat)
+  document.getElementById('tab-rpc')     ?.classList.toggle('active', isRpc)
+  document.getElementById('tab-teams')   ?.classList.toggle('active', isTeams)
+  document.getElementById('tab-terminal')?.classList.toggle('active', isTerm)
+
+  // Pane visibility
+  const main     = document.querySelector('main')
+  const footer   = document.querySelector('footer')
+  const rpcPane  = document.getElementById('rpc-pane')
+  const tmsPane  = document.getElementById('teams-pane')
+  const termPane = document.getElementById('terminal-pane')
+
+  if (main)     main.style.display   = isChat ? '' : 'none'
+  if (footer)   footer.style.display = isChat ? '' : 'none'
+  if (rpcPane)  rpcPane.classList.toggle('visible', isRpc)
+  if (tmsPane)  tmsPane.classList.toggle('visible', isTeams)
+  if (termPane) termPane.classList.toggle('visible', isTerm)
+
+  // Side effects
+  if (isRpc)   rpcRefreshList()
+  if (isTeams) teamsRefresh()
+}
+
+// ── RPC session management ─────────────────────────────────────────────────
+window.rpcNewSession = function() {
+  const cwd = document.getElementById('rpc-cwd-input').value.trim() || undefined
+  const sessionId = `pi-${Date.now()}`
+  send({ type: 'rpc_new', id: `rpc-new-${Date.now()}`, sessionId, cwd })
+}
+
+window.rpcRefreshList = function() {
+  send({ type: 'rpc_list', id: 'rpc-list' })
+}
+
+window.rpcSend = function() {
+  if (!activeRpcSession) return
+  const ta = document.getElementById('rpc-prompt-input')
+  const message = ta.value.trim()
+  if (!message) return
+  ta.value = ''
+  ta.style.height = 'auto'
+  send({ type: 'rpc_prompt', id: `rpc-p-${Date.now()}`, sessionId: activeRpcSession, message })
+  appendRpcEvent(activeRpcSession, 'user', message)
+}
+
+window.rpcAbort = function() {
+  if (!activeRpcSession) return
+  send({ type: 'rpc_abort', id: `rpc-a-${Date.now()}`, sessionId: activeRpcSession })
+}
+
+window.rpcKill = function() {
+  if (!activeRpcSession) return
+  send({ type: 'rpc_kill', id: `rpc-k-${Date.now()}`, sessionId: activeRpcSession })
+}
+
+function activateRpcSession(sessionId) {
+  activeRpcSession = sessionId
+  const s = rpcSessions.get(sessionId)
+
+  // Update list active state
+  document.querySelectorAll('#rpc-session-list .pane-list-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.sessionId === sessionId)
+  })
+
+  // Update detail header
+  document.getElementById('rpc-detail-label').textContent = 'Session'
+  document.getElementById('rpc-detail-id').textContent = sessionId
+  document.getElementById('rpc-abort-btn').style.display = ''
+  document.getElementById('rpc-kill-btn').style.display  = ''
+
+  // Enable prompt
+  document.getElementById('rpc-prompt-input').disabled = false
+  document.getElementById('rpc-send-btn').disabled = false
+
+  // Replay events
+  const stream = document.getElementById('rpc-event-stream')
+  stream.innerHTML = ''
+  if (s) {
+    for (const ev of s.events) stream.insertAdjacentHTML('beforeend', renderRpcEventHtml(ev))
+    stream.scrollTop = stream.scrollHeight
+  }
+}
+
+function appendRpcEvent(sessionId, type, content) {
+  const s = rpcSessions.get(sessionId)
+  if (s) s.events.push({ type, content })
+
+  if (activeRpcSession === sessionId) {
+    const stream = document.getElementById('rpc-event-stream')
+    stream.insertAdjacentHTML('beforeend', renderRpcEventHtml({ type, content }))
+    stream.scrollTop = stream.scrollHeight
+  }
+}
+
+function renderRpcEventHtml({ type, content }) {
+  const typeClass = type.replace(/[^a-z0-9_]/gi, '_').toLowerCase()
+  const display = type === 'user' ? 'you' : type.replace(/_/g, ' ')
+  const safe = escHtml(typeof content === 'object' ? JSON.stringify(content) : String(content ?? ''))
+  return `<div class="ev"><span class="ev-type ${typeClass}">${escHtml(display)}</span><span class="ev-body">${safe}</span></div>`
+}
+
+function renderRpcSessionList(sessions) {
+  const el = document.getElementById('rpc-session-list')
+  const count = document.getElementById('rpc-session-count')
+  count.textContent = sessions.length ? `${sessions.length} session${sessions.length > 1 ? 's' : ''}` : ''
+
+  if (!sessions.length) {
+    el.innerHTML = '<div style="padding:14px;font-size:12px;color:var(--muted)">No sessions — create one above</div>'
+    rpcSessions.clear()
+    return
+  }
+
+  // Sync rpcSessions map
+  const incoming = new Set(sessions.map(s => s.id))
+  for (const [id] of rpcSessions) {
+    if (!incoming.has(id)) rpcSessions.delete(id)
+  }
+  for (const s of sessions) {
+    if (!rpcSessions.has(s.id)) rpcSessions.set(s.id, { alive: s.alive, events: [] })
+  }
+
+  el.innerHTML = sessions.map(s => {
+    const dotClass = s.alive ? '' : 'dead'
+    const isActive = s.id === activeRpcSession
+    return `<div class="pane-list-item ${isActive ? 'active' : ''}" data-session-id="${escHtml(s.id)}" onclick="activateRpcSession('${escHtml(s.id)}')">
+      <span class="item-dot ${dotClass}"></span>
+      <span style="font-family:var(--font-mono);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.id)}</span>
+    </div>`
+  }).join('')
+}
+
+// ── Frame handlers for RPC ─────────────────────────────────────────────────
+function handleRpcFrame(f) {
+  switch (f.type) {
+    case 'rpc_created': {
+      if (!rpcSessions.has(f.sessionId)) rpcSessions.set(f.sessionId, { alive: true, events: [] })
+      rpcRefreshList()
+      activateRpcSession(f.sessionId)
+      break
+    }
+    case 'rpc_event': {
+      const { sessionId, event } = f
+      if (!rpcSessions.has(sessionId)) rpcSessions.set(sessionId, { alive: true, events: [] })
+      const type = event?.type ?? 'event'
+      let content = ''
+      if (type === 'message_update') {
+        content = event?.assistantMessageEvent?.delta ?? event?.assistantMessageEvent?.content ?? ''
+      } else if (type === 'tool_execution_start' || type === 'tool_execution_end') {
+        content = event?.toolName ?? JSON.stringify(event)
+      } else {
+        content = JSON.stringify(event)
+      }
+      appendRpcEvent(sessionId, type, content)
+      break
+    }
+    case 'rpc_idle':
+      appendRpcEvent(f.sessionId, 'turn_end', '— idle —')
+      document.getElementById('rpc-detail-label').textContent = 'Session (idle)'
+      break
+    case 'rpc_killed': {
+      const s = rpcSessions.get(f.sessionId)
+      if (s) s.alive = false
+      appendRpcEvent(f.sessionId, 'error', 'session killed')
+      rpcRefreshList()
+      break
+    }
+    case 'rpc_sessions':
+      renderRpcSessionList(f.sessions || [])
+      break
+  }
+}
+
+// Auto-resize RPC prompt
+document.getElementById('rpc-prompt-input').addEventListener('input', function() {
+  this.style.height = 'auto'
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px'
+})
+document.getElementById('rpc-prompt-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.rpcSend() }
+})
+</script>
+
+<!-- ── Agent Teams tab ───────────────────────────────────────────────────── -->
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const teamsState = new Map()  // teamName → TeamState
+let activeTeamName = null
+let watchingTeams = new Set()
+
+// ── CRUD ───────────────────────────────────────────────────────────────────
+window.teamsCreate = function() {
+  const preset = document.getElementById('teams-preset-select').value
+  const teamName = document.getElementById('teams-name-input').value.trim() || undefined
+  if (!preset) { alert('Select a preset first'); return }
+  send({ type: 'teams_create', id: `tc-${Date.now()}`, preset, teamName })
+}
+
+window.teamsRefresh = function() {
+  send({ type: 'teams_list', id: 'tl' })
+}
+
+window.teamsSpawn = function() {
+  if (!activeTeamName) return
+  const cwd = document.getElementById('rpc-cwd-input').value.trim() || undefined
+  send({ type: 'teams_spawn', id: `ts-${Date.now()}`, teamName: activeTeamName, cwd })
+}
+
+window.teamsToggleWatch = function() {
+  if (!activeTeamName) return
+  if (!watchingTeams.has(activeTeamName)) {
+    watchingTeams.add(activeTeamName)
+    send({ type: 'teams_watch', id: `tw-${Date.now()}`, teamName: activeTeamName })
+    document.getElementById('teams-watch-btn').textContent = '👁 Watching'
+    document.getElementById('teams-watch-btn').style.color = 'var(--success)'
+  }
+}
+
+window.teamsSendMsg = function() {
+  if (!activeTeamName) return
+  const to = document.getElementById('teams-msg-to').value
+  const content = document.getElementById('teams-msg-input').value.trim()
+  if (!to || !content) return
+  send({ type: 'teams_message', id: `tm-${Date.now()}`, teamName: activeTeamName,
+    from: 'pi-builder', to, content })
+  document.getElementById('teams-msg-input').value = ''
+}
+
+window.teamsBroadcast = function() {
+  if (!activeTeamName) return
+  const content = document.getElementById('teams-msg-input').value.trim()
+  if (!content) return
+  send({ type: 'teams_broadcast', id: `tb-${Date.now()}`, teamName: activeTeamName,
+    from: 'pi-builder', content })
+  document.getElementById('teams-msg-input').value = ''
+}
+
+// ── Activate team ──────────────────────────────────────────────────────────
+function activateTeam(teamName) {
+  activeTeamName = teamName
+  document.querySelectorAll('#teams-list .pane-list-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.teamName === teamName)
+  })
+
+  document.getElementById('teams-detail-name').textContent = teamName
+  document.getElementById('teams-detail-name').style.color = 'var(--accent)'
+  document.getElementById('teams-spawn-btn').style.display = ''
+  document.getElementById('teams-watch-btn').style.display = ''
+  document.getElementById('teams-msg-bar').style.display = ''
+
+  const state = teamsState.get(teamName)
+  if (state) renderTeamDetail(state)
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function renderTeamsList(states) {
+  const el = document.getElementById('teams-list')
+  if (!states.length) {
+    el.innerHTML = '<div style="padding:14px;font-size:12px;color:var(--muted)">No teams — create one above</div>'
+    return
+  }
+  teamsState.clear()
+  for (const s of states) teamsState.set(s.config.teamName, s)
+
+  el.innerHTML = states.map(s => {
+    const pct = s.progress.pct
+    const isActive = s.config.teamName === activeTeamName
+    return `<div class="pane-list-item ${isActive ? 'active' : ''}" data-team-name="${escHtml(s.config.teamName)}" onclick="activateTeam('${escHtml(s.config.teamName)}')">
+      <span class="item-dot"></span>
+      <div style="flex:1;min-width:0">
+        <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.config.teamName)}</div>
+        <div style="font-size:11px;color:var(--muted)">${s.config.members.length} members · ${pct}%</div>
+      </div>
+    </div>`
+  }).join('')
+
+  if (activeTeamName) {
+    const current = teamsState.get(activeTeamName)
+    if (current) renderTeamDetail(current)
+  }
+}
+
+function renderTeamDetail(state) {
+  const { config, tasks, progress } = state
+
+  // Members
+  const membersEl = document.getElementById('teams-members')
+  membersEl.innerHTML = config.members.map(m =>
+    `<div class="member-row">
+      <span class="item-dot"></span>
+      <span>${escHtml(m.name)}</span>
+      <span class="member-type">${escHtml(m.agentType)}</span>
+    </div>`
+  ).join('')
+
+  // To dropdown for messages
+  const toEl = document.getElementById('teams-msg-to')
+  toEl.innerHTML = config.members.map(m =>
+    `<option value="${escHtml(m.name)}">${escHtml(m.name)}</option>`
+  ).join('')
+
+  // Progress
+  document.getElementById('teams-progress-bar').style.width = progress.pct + '%'
+  document.getElementById('teams-progress-label').textContent = `${progress.completed} / ${progress.total} tasks completed`
+
+  // Tasks
+  const tasksEl = document.getElementById('teams-tasks')
+  const activeTasks = tasks.filter(t => t.status !== 'deleted')
+  if (!activeTasks.length) {
+    tasksEl.innerHTML = '<div style="color:var(--muted);font-size:12px">No tasks yet</div>'
+  } else {
+    tasksEl.innerHTML = activeTasks.map(t => `
+      <div class="task-card ${escHtml(t.status)}">
+        <div class="task-header">
+          <span class="task-status ${escHtml(t.status)}">${escHtml(t.status.replace('_', ' '))}</span>
+          ${t.owner ? `<span class="task-owner">→ ${escHtml(t.owner)}</span>` : ''}
+        </div>
+        <div class="task-subject">${escHtml(t.subject)}</div>
+        ${t.description ? `<div class="task-desc">${escHtml(t.description)}</div>` : ''}
+      </div>`).join('')
+  }
+}
+
+// ── Frame handlers for Teams ───────────────────────────────────────────────
+function handleTeamsFrame(f) {
+  switch (f.type) {
+    case 'teams_list':
+      renderTeamsList(f.teams || [])
+      break
+    case 'teams_created':
+      teamsRefresh()
+      if (f.config?.teamName) activateTeam(f.config.teamName)
+      break
+    case 'teams_task':
+    case 'teams_tasks':
+      if (activeTeamName === f.teamName) {
+        const state = teamsState.get(f.teamName)
+        if (state) {
+          if (f.tasks) state.tasks = f.tasks
+          if (f.task) {
+            const idx = state.tasks.findIndex(t => t.id === f.task.id)
+            if (idx >= 0) state.tasks[idx] = f.task
+            else state.tasks.push(f.task)
+          }
+          // recalculate progress
+          const completed = state.tasks.filter(t => t.status === 'completed').length
+          const total = state.tasks.filter(t => t.status !== 'deleted').length
+          state.progress = { completed, total, pct: total ? Math.round((completed/total)*100) : 0 }
+          renderTeamDetail(state)
+        }
+      }
+      break
+    case 'teams_output':
+      // Log team claude output to console for now
+      console.log(`[teams:${f.teamName}]`, f.text)
+      break
+  }
+}
+</script>
+
 <!-- ── Terminal tab (ghostty-web) ───────────────────────────────────────── -->
 <script type="module">
 // ghostty-web from unpkg — xterm.js compatible API, WASM VT100
@@ -951,27 +1660,18 @@ init().then(() => {
   console.warn('[ghostty-web] WASM init failed, falling back to xterm.js if available:', err)
 })
 
-// ── View switching ──────────────────────────────────────────────────────
-window.switchView = function(view) {
-  document.getElementById('tab-chat').classList.toggle('active', view === 'chat')
-  document.getElementById('tab-terminal').classList.toggle('active', view === 'terminal')
-
-  const main = document.querySelector('main')
-  const termPane = document.getElementById('terminal-pane')
-  const footer = document.querySelector('footer')
-
-  if (view === 'terminal') {
-    main.style.display = 'none'
-    footer.style.display = 'none'
-    termPane.classList.add('visible')
-    // fit active terminal on show
-    if (activeSessionId) fitTerm(activeSessionId)
-  } else {
-    main.style.display = ''
-    footer.style.display = ''
-    termPane.classList.remove('visible')
+// ── Terminal view side-effect hook ─────────────────────────────────────
+// Main switchView is defined in the RPC Sessions script above.
+// We just need to fit the active terminal when the terminal tab is selected.
+;(function patchSwitchViewForTerminal() {
+  const prev = window.switchView
+  window.switchView = function(view) {
+    prev?.(view)
+    if (view === 'terminal' && activeSessionId) {
+      requestAnimationFrame(() => fitTerm(activeSessionId))
+    }
   }
-}
+})()
 
 // ── Spawn terminal ──────────────────────────────────────────────────────
 window.spawnTerminal = function() {
