@@ -46,6 +46,7 @@ import {
 import { PtyManager } from './pty-manager'
 import { RpcSessionManager } from '../integrations/agent-wrappers'
 import { AgentTeamsDriver, TEAM_PRESETS, type TeamPreset } from '../teams/agent-teams'
+import { ThreadEngine, buildThreadCommand, THREAD_PRESETS, type ThreadSpec, type ThreadType } from '../threads/thread-engine'
 
 // Resolve the web UI HTML file — look relative to this module, then relative to CWD
 function resolveUiPath(): string {
@@ -84,6 +85,8 @@ export interface ClientMessage {
       | 'rpc_new' | 'rpc_prompt' | 'rpc_abort' | 'rpc_kill' | 'rpc_list'
       | 'teams_list' | 'teams_create' | 'teams_spawn' | 'teams_task_update'
       | 'teams_message' | 'teams_broadcast' | 'teams_watch' | 'teams_delete'
+      | 'thread_launch' | 'thread_list' | 'thread_kill' | 'thread_abort' | 'thread_steer'
+      | 'thread_preset'
   id?: string
   message?: string
   // PTY fields
@@ -114,6 +117,7 @@ export class PiBuilderGateway {
   private ptyManager = new PtyManager()
   private rpcSessions = new RpcSessionManager()
   private teams = new AgentTeamsDriver()
+  private threadEngine = new ThreadEngine(this.rpcSessions)
 
   constructor(config: GatewayConfig = {}) {
     this.config = {
@@ -220,6 +224,12 @@ export class PiBuilderGateway {
     this.orchestrator.on('error', (err: Error) => {
       this.broadcast({ type: 'error', message: err.message })
     })
+
+    // Forward Thread engine events to all WS clients
+    this.threadEngine.on('launched', (run) => this.broadcast({ type: 'thread_launched', run }))
+    this.threadEngine.on('event',    (id, ev) => this.broadcast({ type: 'thread_event', threadId: id, event: ev }))
+    this.threadEngine.on('idle',     (id) => this.broadcast({ type: 'thread_idle', threadId: id }))
+    this.threadEngine.on('killed',   (id) => this.broadcast({ type: 'thread_killed', threadId: id }))
 
     // Forward Agent Teams events to all WS clients
     this.teams.on('team:created', (config) => this.broadcast({ type: 'teams_created', config }))
@@ -378,6 +388,24 @@ export class PiBuilderGateway {
           break
         case 'teams_delete':
           this.handleTeamsDelete(ws, frame)
+          break
+        case 'thread_launch':
+          await this.handleThreadLaunch(ws, frame)
+          break
+        case 'thread_list':
+          this.handleThreadList(ws, frame)
+          break
+        case 'thread_kill':
+          await this.handleThreadKill(ws, frame)
+          break
+        case 'thread_abort':
+          await this.handleThreadAbort(ws, frame)
+          break
+        case 'thread_steer':
+          await this.handleThreadSteer(ws, frame)
+          break
+        case 'thread_preset':
+          this.handleThreadPreset(ws, frame)
           break
         default:
           this.send(ws, { type: 'error', id: frame.id, message: `Unknown method: ${frame.type}` })
@@ -538,6 +566,69 @@ export class PiBuilderGateway {
 
   private handleRpcList(ws: WebSocket, frame: ClientMessage): void {
     this.send(ws, { type: 'rpc_sessions', id: frame.id, sessions: this.rpcSessions.list() })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Thread-based engineering handlers (pi-subagents)
+  // ---------------------------------------------------------------------------
+
+  private async handleThreadLaunch(ws: WebSocket, frame: ClientMessage): Promise<void> {
+    const f = frame as unknown as Record<string, unknown>
+    const { id } = frame
+    try {
+      const spec = f.spec as ThreadSpec
+      if (!spec?.type) { this.send(ws, { type: 'error', id, message: 'thread_launch requires spec.type' }); return }
+      const run = await this.threadEngine.launch(spec)
+      this.send(ws, { type: 'thread_launched', id, run })
+    } catch (err) {
+      this.send(ws, { type: 'error', id, message: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  private handleThreadList(ws: WebSocket, frame: ClientMessage): void {
+    const presets = Object.keys(THREAD_PRESETS).map(k => ({ name: k }))
+    this.send(ws, { type: 'thread_list', id: frame.id, threads: this.threadEngine.listThreads(), presets })
+  }
+
+  private async handleThreadKill(ws: WebSocket, frame: ClientMessage): Promise<void> {
+    const f = frame as unknown as Record<string, string>
+    if (!f.threadId) { this.send(ws, { type: 'error', id: frame.id, message: 'threadId required' }); return }
+    await this.threadEngine.killThread(f.threadId)
+    this.send(ws, { type: 'ok', id: frame.id, method: 'thread_kill' })
+  }
+
+  private async handleThreadAbort(ws: WebSocket, frame: ClientMessage): Promise<void> {
+    const f = frame as unknown as Record<string, string>
+    if (!f.threadId) { this.send(ws, { type: 'error', id: frame.id, message: 'threadId required' }); return }
+    await this.threadEngine.abortThread(f.threadId)
+    this.send(ws, { type: 'ok', id: frame.id, method: 'thread_abort' })
+  }
+
+  private async handleThreadSteer(ws: WebSocket, frame: ClientMessage): Promise<void> {
+    const f = frame as unknown as Record<string, string>
+    if (!f.threadId || !f.message) { this.send(ws, { type: 'error', id: frame.id, message: 'threadId and message required' }); return }
+    try {
+      await this.threadEngine.steerThread(f.threadId, f.message)
+      this.send(ws, { type: 'ok', id: frame.id, method: 'thread_steer' })
+    } catch (err) {
+      this.send(ws, { type: 'error', id: frame.id, message: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  private handleThreadPreset(ws: WebSocket, frame: ClientMessage): void {
+    const f = frame as unknown as Record<string, unknown>
+    const { id } = frame
+    const presetName = f.preset as string
+    const arg = f.arg as string
+    type PresetKey = keyof typeof THREAD_PRESETS
+    if (!presetName || !(presetName in THREAD_PRESETS)) {
+      const available = Object.keys(THREAD_PRESETS)
+      this.send(ws, { type: 'error', id, message: `Unknown preset '${presetName}'. Available: ${available.join(', ')}` })
+      return
+    }
+    const spec = THREAD_PRESETS[presetName as PresetKey](arg ?? '')
+    const command = buildThreadCommand(spec)
+    this.send(ws, { type: 'thread_preset_preview', id, preset: presetName, spec, command })
   }
 
   // ---------------------------------------------------------------------------

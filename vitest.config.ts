@@ -22,6 +22,10 @@ export default defineConfig({
     globals: true,
     hookTimeout: 30_000,
     testTimeout: 30_000,
+    // Gateway tests bind real TCP ports — run all test files sequentially
+    // to prevent EADDRINUSE races when the full suite runs in parallel.
+    pool: 'forks',
+    poolOptions: { forks: { singleFork: true } },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

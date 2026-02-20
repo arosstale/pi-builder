@@ -352,6 +352,121 @@
   .view-tab:hover { color: var(--text); }
   .view-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
+  /* ── Threads pane ── */
+  #threads-pane {
+    display: none;
+    flex: 1;
+    overflow: hidden;
+    flex-direction: column;
+  }
+  #threads-pane.visible { display: flex; }
+
+  /* Thread type badges */
+  .thread-type {
+    display: inline-block;
+    font-size: 10px; font-weight: 700; font-family: var(--font-mono);
+    padding: 1px 7px; border-radius: 10px; text-transform: uppercase;
+    letter-spacing: 0.5px; flex-shrink: 0;
+  }
+  .thread-type.base  { background:#1a1a2e; color:#79c0ff; }
+  .thread-type.p     { background:#0d2a0d; color:#3fb950; }
+  .thread-type.c     { background:#1a1f0d; color:#9fc46b; }
+  .thread-type.f     { background:#2a1d0d; color:#d29922; }
+  .thread-type.b     { background:#1d0d2a; color:#bc8cff; }
+  .thread-type.l     { background:#2a0d1a; color:#f85149; }
+  .thread-type.z     { background:#1a0a0a; color:#ff6e6e; }
+
+  .thread-type-legend {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--surface); flex-shrink: 0;
+  }
+  .thread-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+
+  /* Preset buttons */
+  .thread-preset-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--surface); flex-shrink: 0;
+  }
+  .thread-preset-btn {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 8px;
+    font-size: 11px; color: var(--text); cursor: pointer; text-align: left;
+  }
+  .thread-preset-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .thread-preset-btn strong { display: block; font-size: 12px; margin-bottom: 2px; color: var(--accent); }
+  .thread-preset-btn span { color: var(--muted); }
+
+  /* Custom builder */
+  .thread-builder {
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--surface); display: flex; gap: 6px; align-items: center;
+    flex-shrink: 0; flex-wrap: wrap;
+  }
+  .thread-builder select, .thread-builder input {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-size: 12px;
+    padding: 4px 8px; font-family: var(--font-mono);
+  }
+  .thread-builder select { min-width: 80px; }
+  .thread-builder input  { flex: 1; min-width: 120px; }
+
+  /* Thread run cards */
+  .thread-list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .thread-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .thread-card.running { border-color: var(--accent); }
+  .thread-card.idle    { border-color: var(--success); }
+  .thread-card.killed  { border-color: var(--muted); opacity: 0.6; }
+
+  .thread-card-header {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    cursor: pointer; background: var(--bg);
+  }
+  .thread-card-header:hover { background: #161b22; }
+  .thread-card-id { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+  .thread-card-status { font-size: 11px; margin-left: auto; }
+  .thread-card-status.running { color: var(--accent); }
+  .thread-card-status.idle    { color: var(--success); }
+  .thread-card-status.killed  { color: var(--muted); }
+
+  .thread-cmd {
+    padding: 6px 12px; font-family: var(--font-mono); font-size: 11px;
+    color: var(--muted); background: var(--surface);
+    border-top: 1px solid var(--border);
+    white-space: pre-wrap; word-break: break-all;
+  }
+
+  .thread-events {
+    max-height: 200px; overflow-y: auto;
+    padding: 8px 12px; display: flex; flex-direction: column; gap: 3px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono); font-size: 12px;
+  }
+  .thread-events::-webkit-scrollbar { width: 4px; }
+  .thread-events::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .thread-ev { display: flex; gap: 6px; line-height: 1.4; }
+  .thread-ev-type { flex-shrink: 0; width: 120px; font-size: 10px; font-weight: 600; color: var(--muted); }
+  .thread-ev-type.message_update { color: var(--accent); }
+  .thread-ev-type.tool_execution_start { color: var(--warn); }
+  .thread-ev-type.turn_end { color: var(--success); }
+  .thread-ev-body { flex: 1; color: var(--text); word-break: break-all; white-space: pre-wrap; }
+
+  .thread-actions { display: flex; gap: 6px; padding: 6px 12px; border-top: 1px solid var(--border); }
+  .thread-actions button {
+    background: none; border: 1px solid var(--border); border-radius: 5px;
+    color: var(--muted); font-size: 11px; padding: 3px 8px; cursor: pointer;
+  }
+  .thread-actions button:hover { border-color: var(--accent); color: var(--accent); }
+  .thread-actions button.danger:hover { border-color: var(--error); color: var(--error); }
+
+  /* Thread prompt builder */
+  #thread-steps-area { font-size: 12px; font-family: var(--font-mono); }
+
   /* ── RPC Sessions pane ── */
   #rpc-pane, #teams-pane {
     display: none;
@@ -712,6 +827,7 @@
 
 <div class="view-tabs">
   <div class="view-tab active" id="tab-chat"     onclick="switchView('chat')">Chat</div>
+  <div class="view-tab"        id="tab-threads"  onclick="switchView('threads')">Threads</div>
   <div class="view-tab"        id="tab-rpc"      onclick="switchView('rpc')">Sessions</div>
   <div class="view-tab"        id="tab-teams"    onclick="switchView('teams')">Teams</div>
   <div class="view-tab"        id="tab-terminal" onclick="switchView('terminal')">Terminal</div>
@@ -736,6 +852,66 @@
     </div>
   </div>
 </main>
+
+<!-- ── Threads pane (thread-based engineering via pi-subagents) ─────────── -->
+<div id="threads-pane">
+  <!-- Legend -->
+  <div class="thread-type-legend">
+    <div class="thread-legend-item"><span class="thread-type base">base</span> single agent</div>
+    <div class="thread-legend-item"><span class="thread-type p">P</span> parallel</div>
+    <div class="thread-legend-item"><span class="thread-type c">C</span> chain</div>
+    <div class="thread-legend-item"><span class="thread-type f">F</span> fusion</div>
+    <div class="thread-legend-item"><span class="thread-type b">B</span> delegate (/run)</div>
+    <div class="thread-legend-item"><span class="thread-type l">L</span> long-duration</div>
+  </div>
+
+  <!-- Presets -->
+  <div class="thread-preset-grid">
+    <button class="thread-preset-btn" onclick="threadPreset('codeReview')">
+      <strong>Code Review</strong><span>scout → reviewer (C)</span>
+    </button>
+    <button class="thread-preset-btn" onclick="threadPreset('parallelReview')">
+      <strong>Parallel Review</strong><span>security + perf + arch (P)</span>
+    </button>
+    <button class="thread-preset-btn" onclick="threadPreset('planAndBuild')">
+      <strong>Plan &amp; Build</strong><span>scout → planner → worker (C)</span>
+    </button>
+    <button class="thread-preset-btn" onclick="threadPreset('debugFusion')">
+      <strong>Debug Fusion</strong><span>3× worker → pick best (F)</span>
+    </button>
+    <button class="thread-preset-btn" onclick="threadPreset('parallelResearch')">
+      <strong>Research</strong><span>scout + researcher (P)</span>
+    </button>
+    <button class="thread-preset-btn" onclick="threadPreset('custom')">
+      <strong>Custom</strong><span>use builder below</span>
+    </button>
+  </div>
+
+  <!-- Custom builder -->
+  <div class="thread-builder">
+    <select id="thread-type-select">
+      <option value="base">Base — single prompt</option>
+      <option value="b">B — /run agent task</option>
+      <option value="c">C — /chain (sequential)</option>
+      <option value="p">P — /parallel (parallel)</option>
+      <option value="f">F — Fusion (same task × N)</option>
+      <option value="l">L — Long duration</option>
+    </select>
+    <input id="thread-task-input" placeholder="task / topic / description…">
+    <input id="thread-agent-input" placeholder="agent (scout/planner/worker…)" style="max-width:160px">
+    <input id="thread-cwd-input"   placeholder="cwd (optional)"              style="max-width:140px">
+    <button class="primary" onclick="threadLaunch()" style="background:var(--accent);border-color:var(--accent);color:#000;font-weight:600;border:none;border-radius:6px;padding:4px 14px;cursor:pointer">▶ Launch</button>
+    <button onclick="threadRefresh()" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);padding:4px 10px;cursor:pointer;font-size:12px">↺</button>
+  </div>
+
+  <!-- Thread list -->
+  <div class="thread-list" id="thread-list">
+    <div style="color:var(--muted);font-size:12px;padding:8px">
+      No threads yet — use a preset or the builder above.
+      Requires <code style="color:var(--accent)">pi install npm:pi-subagents</code>.
+    </div>
+  </div>
+</div>
 
 <!-- ── RPC Sessions pane ─────────────────────────────────────────────────── -->
 <div id="rpc-pane">
@@ -978,6 +1154,16 @@ function handleFrame(f) {
       break
 
     case 'ok':
+      break
+
+    // Thread frames
+    case 'thread_launched':
+    case 'thread_event':
+    case 'thread_idle':
+    case 'thread_killed':
+    case 'thread_list':
+    case 'thread_preset_preview':
+      handleThreadFrame(f)
       break
 
     // RPC session frames
@@ -1268,6 +1454,220 @@ document.getElementById('ws-url').addEventListener('change', () => {
 connect()
 </script>
 
+<!-- ── Threads tab (thread-based engineering via pi-subagents) ──────────── -->
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const threads = new Map()  // threadId → ThreadRun
+let activePreset = null
+
+// ── switchView patch will add threads handling ─────────────────────────────
+// (the canonical switchView is defined in the next script block; we register
+//  a post-hook via the existing pattern: store previous, wrap, restore)
+
+// ── Preset launcher ────────────────────────────────────────────────────────
+const PRESET_ARGS = {
+  codeReview:       'src/',
+  parallelReview:   'src/',
+  planAndBuild:     'add the feature',
+  debugFusion:      'describe the bug here',
+  parallelResearch: 'your research question',
+}
+
+window.threadPreset = function(name) {
+  if (name === 'custom') {
+    document.getElementById('thread-task-input').focus()
+    return
+  }
+  activePreset = name
+  const defaultArg = PRESET_ARGS[name] ?? ''
+  const task = prompt(`Task / target for "${name}" preset:`, defaultArg)
+  if (!task) return
+  send({ type: 'thread_preset', id: `tp-${Date.now()}`, preset: name, arg: task })
+}
+
+// After gateway responds with thread_preset_preview, auto-launch
+function handleThreadPresetPreview(f) {
+  // Show the generated command, then launch
+  const ok = confirm(`Launch thread:\n\n${f.command}\n\nProceed?`)
+  if (!ok) return
+  send({ type: 'thread_launch', id: `tl-${Date.now()}`, spec: f.spec })
+}
+
+// ── Custom builder launch ──────────────────────────────────────────────────
+window.threadLaunch = function() {
+  const type  = document.getElementById('thread-type-select').value
+  const task  = document.getElementById('thread-task-input').value.trim()
+  const agent = document.getElementById('thread-agent-input').value.trim() || undefined
+  const cwd   = document.getElementById('thread-cwd-input').value.trim()   || undefined
+
+  if (!task) { alert('Enter a task first'); return }
+
+  let spec
+  switch (type) {
+    case 'base': case 'l': case 'z':
+      spec = { type, task, cwd }
+      break
+    case 'b':
+      spec = { type: 'b', task, agent: agent || 'worker', cwd }
+      break
+    case 'c':
+      // Simple 3-step chain: scout → planner → worker
+      spec = {
+        type: 'c', cwd, skipClarify: true,
+        steps: [
+          { agent: 'scout',   task: `Gather context for: ${task}`, output: 'context.md' },
+          { agent: 'planner', task: `Plan implementation for: ${task}`, reads: ['context.md'], output: 'plan.md' },
+          { agent: agent || 'worker', task, reads: ['context.md', 'plan.md'] },
+        ],
+      }
+      break
+    case 'p':
+      // 2 reviewers in parallel
+      spec = {
+        type: 'p', cwd,
+        tasks: [
+          { agent: agent || 'reviewer', task: `${task} — security perspective` },
+          { agent: agent || 'reviewer', task: `${task} — performance perspective` },
+        ],
+      }
+      break
+    case 'f':
+      // 3 workers, same task, fuse results
+      spec = {
+        type: 'f', task, cwd,
+        tasks: [
+          { agent: agent || 'worker', task },
+          { agent: agent || 'worker', task },
+          { agent: agent || 'worker', task },
+        ],
+      }
+      break
+    default:
+      alert(`Unknown thread type: ${type}`)
+      return
+  }
+
+  send({ type: 'thread_launch', id: `tl-${Date.now()}`, spec })
+}
+
+window.threadRefresh = function() {
+  send({ type: 'thread_list', id: 'thr-list' })
+}
+
+window.threadKill = function(id) {
+  if (!confirm(`Kill thread ${id}?`)) return
+  send({ type: 'thread_kill', id: `tk-${Date.now()}`, threadId: id })
+}
+
+window.threadAbort = function(id) {
+  send({ type: 'thread_abort', id: `ta-${Date.now()}`, threadId: id })
+}
+
+window.threadSteer = function(id) {
+  const msg = prompt('Steer message (interrupt + redirect):')
+  if (!msg) return
+  send({ type: 'thread_steer', id: `ts-${Date.now()}`, threadId: id, message: msg })
+}
+
+window.toggleThreadEvents = function(id) {
+  const el = document.getElementById(`thread-events-${id}`)
+  if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none'
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function renderThreadList() {
+  const el = document.getElementById('thread-list')
+  const list = [...threads.values()].sort((a, b) => b.startedAt - a.startedAt)
+
+  if (!list.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">No threads yet.</div>'
+    return
+  }
+
+  el.innerHTML = list.map(r => {
+    const age = Math.round((Date.now() - r.startedAt) / 1000)
+    const ageStr = age < 60 ? `${age}s` : `${Math.round(age/60)}m`
+    const evts = (r.events || []).slice(-20)
+    const evHtml = evts.map(ev => {
+      const tc = (ev.type || '').replace(/[^a-z0-9_]/gi, '_').toLowerCase()
+      const body = ev.text || ev.toolName || ''
+      return body ? `<div class="thread-ev">
+        <span class="thread-ev-type ${tc}">${escHtml(ev.type || '')}</span>
+        <span class="thread-ev-body">${escHtml(body.slice(0, 200))}</span>
+      </div>` : ''
+    }).filter(Boolean).join('')
+
+    return `<div class="thread-card ${escHtml(r.status || 'running')}" id="tcard-${escHtml(r.id)}">
+      <div class="thread-card-header" onclick="toggleThreadEvents('${escHtml(r.id)}')">
+        <span class="thread-type ${escHtml(r.type)}">${escHtml(r.type)}</span>
+        <span class="thread-card-id">${escHtml(r.id)}</span>
+        <span class="thread-card-status ${escHtml(r.status || 'running')}">${escHtml(r.status || 'running')} · ${ageStr}</span>
+      </div>
+      <div class="thread-cmd">${escHtml(r.command || '')}</div>
+      <div class="thread-events" id="thread-events-${escHtml(r.id)}" style="display:flex;flex-direction:column">${evHtml}</div>
+      <div class="thread-actions">
+        <button onclick="threadSteer('${escHtml(r.id)}')">↩ Steer</button>
+        <button onclick="threadAbort('${escHtml(r.id)}')">⏹ Abort</button>
+        <button class="danger" onclick="threadKill('${escHtml(r.id)}')">✕ Kill</button>
+      </div>
+    </div>`
+  }).join('')
+}
+
+function appendThreadEvent(threadId, event) {
+  const run = threads.get(threadId)
+  if (run) {
+    if (!run.events) run.events = []
+    run.events.push(event)
+    // Live-update the events div if visible
+    const el = document.getElementById(`thread-events-${threadId}`)
+    if (el && el.style.display !== 'none') {
+      const body = event.text || event.toolName || ''
+      if (body) {
+        const tc = (event.type || '').replace(/[^a-z0-9_]/gi, '_').toLowerCase()
+        el.insertAdjacentHTML('beforeend', `<div class="thread-ev">
+          <span class="thread-ev-type ${tc}">${escHtml(event.type || '')}</span>
+          <span class="thread-ev-body">${escHtml(body.slice(0, 200))}</span>
+        </div>`)
+        el.scrollTop = el.scrollHeight
+      }
+    }
+  }
+}
+
+// ── Frame handler ──────────────────────────────────────────────────────────
+function handleThreadFrame(f) {
+  switch (f.type) {
+    case 'thread_launched':
+      threads.set(f.run.id, f.run)
+      renderThreadList()
+      break
+    case 'thread_event':
+      if (!threads.has(f.threadId)) threads.set(f.threadId, { id: f.threadId, events: [], status: 'running', type: '?', command: '' })
+      appendThreadEvent(f.threadId, f.event)
+      break
+    case 'thread_idle': {
+      const r = threads.get(f.threadId)
+      if (r) { r.status = 'idle'; renderThreadList() }
+      break
+    }
+    case 'thread_killed': {
+      const r = threads.get(f.threadId)
+      if (r) { r.status = 'killed'; renderThreadList() }
+      break
+    }
+    case 'thread_list':
+      threads.clear()
+      for (const t of (f.threads || [])) threads.set(t.id, t)
+      renderThreadList()
+      break
+    case 'thread_preset_preview':
+      handleThreadPresetPreview(f)
+      break
+  }
+}
+</script>
+
 <!-- ── RPC Sessions tab ─────────────────────────────────────────────────── -->
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
@@ -1275,35 +1675,36 @@ const rpcSessions = new Map()  // sessionId → { alive, events: [] }
 let activeRpcSession = null
 
 // ── switchView — canonical implementation ──────────────────────────────────
-// Defines the full tab-switching logic. Terminal module patches on top for fit.
 window.switchView = function(view) {
-  const isChat  = view === 'chat'
-  const isRpc   = view === 'rpc'
-  const isTeams = view === 'teams'
-  const isTerm  = view === 'terminal'
+  const isChat    = view === 'chat'
+  const isThreads = view === 'threads'
+  const isRpc     = view === 'rpc'
+  const isTeams   = view === 'teams'
+  const isTerm    = view === 'terminal'
 
-  // Tab active states
   document.getElementById('tab-chat')    ?.classList.toggle('active', isChat)
+  document.getElementById('tab-threads') ?.classList.toggle('active', isThreads)
   document.getElementById('tab-rpc')     ?.classList.toggle('active', isRpc)
   document.getElementById('tab-teams')   ?.classList.toggle('active', isTeams)
   document.getElementById('tab-terminal')?.classList.toggle('active', isTerm)
 
-  // Pane visibility
-  const main     = document.querySelector('main')
-  const footer   = document.querySelector('footer')
-  const rpcPane  = document.getElementById('rpc-pane')
-  const tmsPane  = document.getElementById('teams-pane')
-  const termPane = document.getElementById('terminal-pane')
+  const main        = document.querySelector('main')
+  const footer      = document.querySelector('footer')
+  const threadPane  = document.getElementById('threads-pane')
+  const rpcPane     = document.getElementById('rpc-pane')
+  const tmsPane     = document.getElementById('teams-pane')
+  const termPane    = document.getElementById('terminal-pane')
 
-  if (main)     main.style.display   = isChat ? '' : 'none'
-  if (footer)   footer.style.display = isChat ? '' : 'none'
-  if (rpcPane)  rpcPane.classList.toggle('visible', isRpc)
-  if (tmsPane)  tmsPane.classList.toggle('visible', isTeams)
-  if (termPane) termPane.classList.toggle('visible', isTerm)
+  if (main)        main.style.display   = isChat ? '' : 'none'
+  if (footer)      footer.style.display = isChat ? '' : 'none'
+  if (threadPane)  threadPane.classList.toggle('visible', isThreads)
+  if (rpcPane)     rpcPane.classList.toggle('visible', isRpc)
+  if (tmsPane)     tmsPane.classList.toggle('visible', isTeams)
+  if (termPane)    termPane.classList.toggle('visible', isTerm)
 
-  // Side effects
-  if (isRpc)   rpcRefreshList()
-  if (isTeams) teamsRefresh()
+  if (isThreads) threadRefresh()
+  if (isRpc)     rpcRefreshList()
+  if (isTeams)   teamsRefresh()
 }
 
 // ── RPC session management ─────────────────────────────────────────────────
