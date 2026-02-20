@@ -32,6 +32,7 @@ import { resolve, join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { randomUUID } from 'node:crypto'
 import { WebSocketServer, WebSocket } from 'ws'
 
 const execFileAsync = promisify(execFile)
@@ -567,7 +568,7 @@ export class PiBuilderGateway {
       } else if (members?.length) {
         config = this.teams.createTeam(teamName ?? `team-${Date.now()}`, members.map(m => ({
           name: m.name,
-          agentId: require('crypto').randomUUID(),
+          agentId: randomUUID(),
           agentType: m.agentType as import('../teams/agent-teams').AgentType,
         })))
       } else {
