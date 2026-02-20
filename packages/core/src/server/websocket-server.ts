@@ -80,7 +80,7 @@ export interface GatewayConfig {
 }
 
 export interface ClientMessage {
-  type: 'send' | 'health' | 'agents' | 'history' | 'clear' | 'diff' | 'queue'
+  type: 'send' | 'health' | 'agents' | 'history' | 'clear' | 'diff' | 'diff_full' | 'queue'
       | 'pty_spawn' | 'pty_input' | 'pty_resize' | 'pty_kill' | 'pty_list'
       | 'rpc_new' | 'rpc_prompt' | 'rpc_abort' | 'rpc_kill' | 'rpc_list'
       | 'teams_list' | 'teams_create' | 'teams_spawn' | 'teams_task_update'
@@ -331,6 +331,9 @@ export class PiBuilderGateway {
           break
         case 'diff':
           await this.handleDiff(ws, frame)
+          break
+        case 'diff_full':
+          await this.handleDiffFull(ws, frame)
           break
         case 'queue':
           this.handleQueue(ws, frame)
@@ -740,7 +743,7 @@ export class PiBuilderGateway {
   // ---------------------------------------------------------------------------
 
   private async handleDiff(ws: WebSocket, frame: ClientMessage): Promise<void> {
-    const diff = await this.getGitDiff()
+    const diff = await this.getGitDiff(false)
     this.send(ws, { type: 'diff', id: frame.id, diff })
   }
 
@@ -749,17 +752,23 @@ export class PiBuilderGateway {
     this.send(ws, { type: 'queue', id: frame.id, queue })
   }
 
-  private async getGitDiff(): Promise<string | null> {
+  private async getGitDiff(full = false): Promise<string | null> {
     const cwd = this.config.orchestrator?.workDir ?? process.cwd()
+    const args = full
+      ? ['diff', 'HEAD', '--no-color', '--unified=3']
+      : ['diff', 'HEAD', '--stat', '--no-color']
     try {
-      const { stdout } = await execFileAsync('git', ['diff', 'HEAD', '--stat', '--no-color'], {
-        cwd,
-        timeout: 5000,
-      })
+      const { stdout } = await execFileAsync('git', args, { cwd, timeout: 10_000 })
       return stdout.trim() || null
     } catch {
       return null
     }
+  }
+
+  private async handleDiffFull(ws: WebSocket, frame: ClientMessage): Promise<void> {
+    const patch = await this.getGitDiff(true)
+    const stat  = await this.getGitDiff(false)
+    this.send(ws, { type: 'diff_full', id: frame.id, patch, stat })
   }
 
   private broadcastGitDiff(): void {

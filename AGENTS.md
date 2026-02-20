@@ -180,8 +180,11 @@ The self-review is a separate cognitive pass from the one that wrote the code. "
 
 ## Known gaps / next items
 
-- Git diff panel shows `--stat` summary only. Full patch view not implemented.
-- `teams_output` (claude's stdout when spawned via `teams_spawn`) goes to console.log only — not surfaced in Teams tab UI yet.
+- Git diff panel: **stat** (default) and **full patch** (syntax-colored unified diff) both implemented.
+  `diff_full` frame returns `{ patch, stat }` — toggle via stat/full buttons in sidebar.
+- `teams_output`: surfaced in Teams detail panel below member cards. Auto-shown on spawn, cleared on team switch.
+- `researcher` and `context-builder` agents: copied from `pi-subagents` to `~/.pi/agent/agents/` — 7 agents total.
 - Tauri `cargo build` only tested on Windows. Linux/macOS Rust deps may differ.
 - Mobile / relay mode: not implemented.
 - `crush` and `opencode` non-interactive flags may need tuning per CLI version.
+- Thread engine sends `/chain --no-clarify` via RPC but pi-subagents chain clarify TUI runs in the subprocess terminal — works fine in PTY terminal mode, skipped in pure RPC mode via `skipClarify: true`.

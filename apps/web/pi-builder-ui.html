@@ -179,10 +179,15 @@
     white-space: pre-wrap;
     word-break: break-all;
     color: var(--muted);
-    max-height: 200px;
+    max-height: 240px;
     overflow-y: auto;
   }
   #diff-content.has-diff { color: var(--text); }
+  /* full diff syntax coloring */
+  #diff-content .dp { color: #58a6ff }   /* @@ hunk header */
+  #diff-content .da { color: #3fb950 }   /* + added */
+  #diff-content .dr { color: #f85149 }   /* - removed */
+  #diff-content .df { color: #d29922; font-weight:600 }  /* diff --git header */
 
   /* message queue badge */
   #queue-badge {
@@ -847,7 +852,15 @@
     <div class="sidebar-title">Agents</div>
     <div id="agent-list"><div style="padding:12px 16px;font-size:12px;color:var(--muted)">Loading…</div></div>
     <div id="diff-panel">
-      <div class="sidebar-title">Git Diff</div>
+      <div class="sidebar-title" style="display:flex;align-items:center;justify-content:space-between">
+        <span>Git Diff</span>
+        <div style="display:flex;gap:4px">
+          <button id="diff-stat-btn" onclick="diffSetMode('stat')"
+            style="font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid var(--accent);background:var(--accent);color:#000;cursor:pointer">stat</button>
+          <button id="diff-full-btn" onclick="diffSetMode('full')"
+            style="font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer">full</button>
+        </div>
+      </div>
       <div id="diff-content">no changes yet</div>
     </div>
   </div>
@@ -981,6 +994,21 @@
       <div class="progress-label" id="teams-progress-label">0 / 0 tasks</div>
       <!-- Tasks -->
       <div id="teams-tasks" class="task-list"><div style="color:var(--muted);font-size:12px">No tasks</div></div>
+      <!-- Claude stdout stream -->
+      <div id="teams-output-wrap" style="display:none;flex-direction:column;border-top:1px solid var(--border);flex-shrink:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 12px;background:var(--bg);font-size:11px;color:var(--muted)">
+          <span>claude output</span>
+          <button onclick="teamsClearOutput()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px">clear</button>
+        </div>
+        <pre id="teams-output" style="
+          margin:0;padding:8px 12px;
+          font-family:var(--font-mono);font-size:11px;
+          color:var(--text);background:var(--surface);
+          max-height:180px;overflow-y:auto;
+          white-space:pre-wrap;word-break:break-all;
+          border-bottom:1px solid var(--border);
+        "></pre>
+      </div>
       <!-- Send message to agent -->
       <div class="pane-prompt" id="teams-msg-bar" style="display:none">
         <select id="teams-msg-to" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:4px 8px"></select>
@@ -1145,7 +1173,13 @@ function handleFrame(f) {
       break
 
     case 'diff':
-      renderDiff(f.diff)
+      diffStatText = f.diff
+      if (diffMode === 'stat') renderDiff(f.diff, false)
+      break
+    case 'diff_full':
+      diffPatchText = f.patch
+      if (!diffStatText) diffStatText = f.stat
+      if (diffMode === 'full') renderDiff(f.patch, true)
       break
 
     case 'queued':
@@ -1321,15 +1355,57 @@ function setPinnedAgent(agentId) {
     : 'Ask anything about your codebase…'
 }
 
-function renderDiff(diff) {
+// ── Git diff display ──────────────────────────────────────────────────────
+let diffMode = 'stat'   // 'stat' | 'full'
+let diffStatText = null
+let diffPatchText = null
+
+window.diffSetMode = function(mode) {
+  diffMode = mode
+  const sb = document.getElementById('diff-stat-btn')
+  const fb = document.getElementById('diff-full-btn')
+  if (sb) {
+    sb.style.background = mode === 'stat' ? 'var(--accent)' : 'none'
+    sb.style.color      = mode === 'stat' ? '#000' : 'var(--muted)'
+    sb.style.borderColor= mode === 'stat' ? 'var(--accent)' : 'var(--border)'
+  }
+  if (fb) {
+    fb.style.background = mode === 'full' ? 'var(--accent)' : 'none'
+    fb.style.color      = mode === 'full' ? '#000' : 'var(--muted)'
+    fb.style.borderColor= mode === 'full' ? 'var(--accent)' : 'var(--border)'
+  }
+  if (mode === 'full' && !diffPatchText) {
+    // Request full patch
+    send({ type: 'diff_full', id: 'df-req' })
+  } else {
+    renderDiff(mode === 'full' ? diffPatchText : diffStatText, mode === 'full')
+  }
+}
+
+function renderDiff(text, isFullPatch = false) {
   const el = document.getElementById('diff-content')
-  if (!diff) {
-    el.textContent = 'no changes'
+  if (!text) {
+    el.innerHTML = '<span style="color:var(--muted)">no changes</span>'
     el.classList.remove('has-diff')
     return
   }
-  el.textContent = diff
   el.classList.add('has-diff')
+
+  if (!isFullPatch) {
+    el.textContent = text
+  } else {
+    // Syntax-color the unified diff
+    const html = text.split('\n').map(line => {
+      const esc = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      if (line.startsWith('diff --git')) return `<span class="df">${esc}</span>`
+      if (line.startsWith('@@'))         return `<span class="dp">${esc}</span>`
+      if (line.startsWith('+'))          return `<span class="da">${esc}</span>`
+      if (line.startsWith('-'))          return `<span class="dr">${esc}</span>`
+      return esc
+    }).join('\n')
+    el.innerHTML = html
+  }
+
   // Auto-open sidebar if diff arrives and sidebar is closed
   if (!sidebarOpen) {
     sidebarOpen = true
@@ -1920,8 +1996,16 @@ window.teamsBroadcast = function() {
   document.getElementById('teams-msg-input').value = ''
 }
 
+window.teamsClearOutput = function() {
+  const pre  = document.getElementById('teams-output')
+  const wrap = document.getElementById('teams-output-wrap')
+  if (pre)  pre.textContent = ''
+  if (wrap) wrap.style.display = 'none'
+}
+
 // ── Activate team ──────────────────────────────────────────────────────────
 function activateTeam(teamName) {
+  if (activeTeamName !== teamName) teamsClearOutput()  // clear output on team switch
   activeTeamName = teamName
   document.querySelectorAll('#teams-list .pane-list-item').forEach(el => {
     el.classList.toggle('active', el.dataset.teamName === teamName)
@@ -2035,10 +2119,17 @@ function handleTeamsFrame(f) {
         }
       }
       break
-    case 'teams_output':
-      // Log team claude output to console for now
+    case 'teams_output': {
       console.log(`[teams:${f.teamName}]`, f.text)
+      const wrap = document.getElementById('teams-output-wrap')
+      const pre  = document.getElementById('teams-output')
+      if (wrap && pre) {
+        wrap.style.display = 'flex'
+        pre.textContent += f.text
+        pre.scrollTop = pre.scrollHeight
+      }
       break
+    }
   }
 }
 </script>
