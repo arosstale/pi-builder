@@ -1,6 +1,6 @@
 # pi-builder
 
-A local-first WebSocket gateway that routes coding prompts to any installed CLI agent, with session persistence, PTY terminal multiplexing, RPC-native pi sessions, and Claude Code Agent Teams support.
+A local-first WebSocket gateway that routes coding prompts to any installed CLI agent, with session persistence, PTY terminal multiplexing, RPC-native pi sessions, Claude Code Agent Teams, and **thread-based engineering** via [pi-subagents](https://github.com/nicobailon/pi-async-subagents).
 
 MIT License.
 
@@ -10,6 +10,7 @@ MIT License.
 
 ```
 You → pi-builder gateway → best available agent → streamed back to you
+                        ↘ pi-subagents threads → scout → planner → worker → …
 ```
 
 One interface, any agent. Automatic capability-based routing with fallback. Talk to it via browser, Electron, or Tauri desktop — or connect your own client over WebSocket.
@@ -20,6 +21,12 @@ One interface, any agent. Automatic capability-based routing with fallback. Talk
 
 ```bash
 bun install
+
+# Install pi-subagents extension (enables Threads tab)
+pi install npm:pi-subagents
+
+# Optional: install bridge extension for live event push from pi → browser
+cp extensions/pi-builder-bridge.ts ~/.pi/agent/extensions/
 
 # Check which agents are installed
 npx tsx apps/cli/src/cli.ts agents
@@ -39,36 +46,38 @@ npx tsx apps/cli/src/cli.ts run "refactor auth.ts to use async/await"
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  Browser UI  apps/web/pi-builder-ui.html  (single-file, no build) │
-│  ├─ Chat tab      — prompt → streamed response                   │
-│  ├─ Sessions tab  — long-lived pi RPC sessions, event stream     │
-│  ├─ Teams tab     — Claude Code Agent Teams (create/watch/msg)   │
-│  └─ Terminal tab  — PTY multiplexer (ghostty-web WASM renderer)  │
-└────────────────────────┬─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  Browser UI  apps/web/pi-builder-ui.html  (single-file, no build)    │
+│  ├─ Chat tab      — prompt → streamed response + git diff sidebar    │
+│  ├─ Threads tab   — thread-based engineering (base/P/C/F/B/L/Z)     │
+│  ├─ Sessions tab  — long-lived pi RPC sessions, event stream         │
+│  ├─ Teams tab     — Claude Code Agent Teams (create/watch/msg)       │
+│  └─ Terminal tab  — PTY multiplexer (ghostty-web WASM renderer)      │
+└────────────────────────┬─────────────────────────────────────────────┘
                          │ WebSocket  port 18900
+                    ┌────┴────┐
+                    │ HTTP    │ POST /bridge  ← pi-builder-bridge.ts
+                    │ GET /   │              (pi extension, auto-push)
+                    └────┬────┘
                          ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  PiBuilderGateway   packages/core/src/server/websocket-server.ts │
-│  ├─ HTTP  GET / → serves web UI  (COOP/COEP for SharedArrayBuffer)│
-│  ├─ WS    chat, health, agents, history, diff, queue             │
-│  ├─ PTY   pty_spawn/input/resize/kill/list  (node-pty)           │
-│  ├─ RPC   rpc_new/prompt/abort/kill/list    (pi --mode rpc)      │
-│  └─ Teams teams_list/create/spawn/watch/message/broadcast        │
-└─────────┬──────────────────────────────────────────┬────────────┘
-          │                                           │
-          ▼                                           ▼
-┌─────────────────────────┐             ┌────────────────────────────┐
-│  WrapperOrchestrator    │             │  AgentTeamsDriver          │
-│  agent-wrappers.ts      │             │  teams/agent-teams.ts      │
-│  ├─ 11 CLI wrappers     │             │  ├─ ~/.claude/teams/       │
-│  ├─ 30s health cache    │             │  ├─ ~/.claude/tasks/       │
-│  ├─ capability routing  │             │  ├─ 7 presets              │
-│  ├─ fallback chain      │             │  └─ poll watcher (2s)      │
-│  └─ RpcSessionManager   │             └────────────────────────────┘
-└─────────┬───────────────┘
-          │
-          ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  PiBuilderGateway   packages/core/src/server/websocket-server.ts     │
+│  ├─ WS    chat, health, agents, history, diff/diff_full, queue       │
+│  ├─ PTY   pty_spawn/input/resize/kill/list  (node-pty)               │
+│  ├─ RPC   rpc_new/prompt/abort/kill/list    (pi --mode rpc)          │
+│  ├─ Teams teams_list/create/spawn/watch/message/broadcast            │
+│  └─ Threads thread_launch/list/kill/abort/steer/preset/agents/async  │
+└───┬──────────────────────────────────┬───────────────────────────────┘
+    │                                  │
+    ▼                                  ▼
+┌──────────────────────┐   ┌─────────────────────┐   ┌──────────────────┐
+│  WrapperOrchestrator │   │  AgentTeamsDriver   │   │  ThreadEngine    │
+│  11 CLI wrappers     │   │  7 presets          │   │  pi-subagents    │
+│  capability routing  │   │  ~/.claude/teams/   │   │  /run /chain     │
+│  RpcSessionManager   │   │  task CRUD          │   │  /parallel       │
+└──────────────────────┘   └─────────────────────┘   └──────────────────┘
+    │
+    ▼
   [pi · claude · aider · codex · gemini · goose · plandex · crush · gptme · opencode · swe-agent]
 ```
 

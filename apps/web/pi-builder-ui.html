@@ -839,6 +839,14 @@
 </div>
 
 <main>
+  <!-- Bridge event strip — shows live notifications from pi-builder-bridge extension -->
+  <div id="bridge-strip" style="
+    display:none; align-items:center; padding:5px 14px;
+    background:var(--surface); border-bottom:1px solid var(--border);
+    font-size:11px; font-family:var(--font-mono); flex-shrink:0;
+    cursor:default; min-height:28px;
+  "></div>
+
   <div id="messages">
     <div class="msg" id="welcome">
       <div class="msg-body" style="color:var(--muted);border-color:#21262d;">
@@ -1197,6 +1205,10 @@ function handleFrame(f) {
       if (diffMode === 'full') renderDiff(f.patch, true)
       break
 
+    case 'bridge_event':
+      handleBridgeEvent(f)
+      break
+
     case 'queued':
       queueCount = f.queueLength || 0
       updateQueueBadge()
@@ -1426,6 +1438,48 @@ function renderDiff(text, isFullPatch = false) {
     sidebarOpen = true
     document.getElementById('sidebar').classList.add('open')
   }
+}
+
+// ── Bridge event handler ──────────────────────────────────────────────────
+// Events forwarded from pi-builder-bridge extension running inside pi
+function handleBridgeEvent(f) {
+  const strip = document.getElementById('bridge-strip')
+  if (!strip) return
+
+  let icon = '📡'
+  let text = ''
+  let color = 'var(--muted)'
+
+  switch (f.type) {
+    case 'session_start':
+      icon = '🟢'; text = `pi session started`; color = 'var(--success)'; break
+    case 'session_shutdown':
+      icon = '🔴'; text = `pi session ended`; color = 'var(--error)'; break
+    case 'turn_end':
+      icon = '✅'; text = f.summary ? `Turn ${f.turnIndex}: ${String(f.summary).slice(0,80)}` : `Turn ${f.turnIndex} done`
+      color = 'var(--accent)'; break
+    case 'tool_execution_end':
+      icon = '🔧'; text = `tool: ${f.toolName}`; color = 'var(--warn)'; break
+    case 'artifact_written':
+      icon = '📄'
+      const fname = String(f.filePath ?? '').split('/').pop() ?? ''
+      text = `artifact: ${fname} (${Math.round((f.size ?? 0)/1024 * 10)/10}KB)`
+      color = '#9fc46b'
+      // Also trigger a diff refresh — the file likely changed the worktree
+      send({ type: 'diff', id: 'br-diff' })
+      break
+    default:
+      text = f.type ?? 'event'
+  }
+
+  strip.style.display = 'flex'
+  strip.style.color = color
+  strip.innerHTML = `<span style="margin-right:6px">${icon}</span><span>${escHtml(text)}</span>` +
+    `<span style="margin-left:auto;font-size:10px;color:var(--muted)">${new Date().toLocaleTimeString()}</span>`
+
+  // Auto-hide after 8s
+  clearTimeout(strip._hideTimer)
+  strip._hideTimer = setTimeout(() => { strip.style.display = 'none' }, 8000)
 }
 
 function updateQueueBadge() {

@@ -172,6 +172,20 @@ export class PiBuilderGateway {
       return
     }
     const url = req.url ?? '/'
+
+    // POST /bridge — pi-builder-bridge extension pushes events here
+    if (req.method === 'POST' && url === '/bridge') {
+      this.handleBridgePost(req, res)
+      return
+    }
+
+    // GET /health — simple liveness check for the bridge extension
+    if (req.method === 'GET' && url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ok: true, clients: this.clients.size }))
+      return
+    }
+
     // Only serve GET /
     if (req.method !== 'GET' || (url !== '/' && url !== '/index.html')) {
       res.writeHead(404, { 'Content-Type': 'text/plain' })
@@ -191,6 +205,31 @@ export class PiBuilderGateway {
       res.writeHead(503, { 'Content-Type': 'text/plain' })
       res.end('Web UI not found — open apps/web/pi-builder-ui.html directly')
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bridge endpoint — receives events from pi-builder-bridge extension
+  // ---------------------------------------------------------------------------
+
+  private handleBridgePost(req: IncomingMessage, res: ServerResponse): void {
+    const chunks: Buffer[] = []
+    req.on('data', (c: Buffer) => chunks.push(c))
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
+        // Broadcast to all WS clients as a 'bridge_event' frame
+        this.broadcast({ type: 'bridge_event', ...body })
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok: true }))
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok: false, error: 'Invalid JSON' }))
+      }
+    })
+    req.on('error', () => {
+      res.writeHead(500)
+      res.end()
+    })
   }
 
   // ---------------------------------------------------------------------------
