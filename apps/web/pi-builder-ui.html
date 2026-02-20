@@ -918,10 +918,25 @@
   </div>
 
   <!-- Thread list -->
-  <div class="thread-list" id="thread-list">
+  <div class="thread-list" id="thread-list" style="flex:1">
     <div style="color:var(--muted);font-size:12px;padding:8px">
       No threads yet — use a preset or the builder above.
       Requires <code style="color:var(--accent)">pi install npm:pi-subagents</code>.
+    </div>
+  </div>
+
+  <!-- Async background jobs (pi-subagents async mode) -->
+  <div id="async-jobs-section" style="border-top:1px solid var(--border);flex-shrink:0;background:var(--surface)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 14px;cursor:pointer"
+         onclick="document.getElementById('async-jobs-body').style.display=document.getElementById('async-jobs-body').style.display==='none'?'block':'none'">
+      <span style="font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.5px">ASYNC BACKGROUND JOBS</span>
+      <button onclick="event.stopPropagation();send({type:'thread_async_list',id:'al-'+Date.now()})"
+        style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:0">↺</button>
+    </div>
+    <div id="async-jobs-body" style="display:none;max-height:140px;overflow-y:auto">
+      <div id="async-jobs-list" style="padding:4px 14px 8px;font-size:11px;font-family:var(--font-mono);color:var(--muted)">
+        No background jobs found.
+      </div>
     </div>
   </div>
 </div>
@@ -1627,8 +1642,9 @@ window.threadLaunch = function() {
 }
 
 window.threadRefresh = function() {
-  send({ type: 'thread_list', id: 'thr-list' })
-  send({ type: 'thread_agents', id: 'thr-agents' })
+  send({ type: 'thread_list',       id: 'thr-list' })
+  send({ type: 'thread_agents',     id: 'thr-agents' })
+  send({ type: 'thread_async_list', id: 'thr-async' })
 }
 
 window.threadKill = function(id) {
@@ -1744,7 +1760,30 @@ function handleThreadFrame(f) {
     case 'thread_agents':
       populateAgentInputs(f.agents || [])
       break
+    case 'thread_async_list':
+      renderAsyncJobs(f.jobs || [])
+      break
   }
+}
+
+function renderAsyncJobs(jobs) {
+  const el = document.getElementById('async-jobs-list')
+  if (!jobs.length) { el.textContent = 'No background jobs found.'; return }
+  el.innerHTML = jobs.map(j => {
+    const statusColor = j.status === 'complete' ? 'var(--success)'
+      : j.status === 'failed' ? 'var(--error)'
+      : j.status === 'running' ? 'var(--accent)'
+      : 'var(--muted)'
+    const step = j.stepsTotal ? ` (${j.currentStep ?? 0}/${j.stepsTotal})` : ''
+    const agents = (j.agents || []).join(', ')
+    return `<div style="display:flex;gap:8px;align-items:baseline;padding:2px 0">
+      <span style="color:${statusColor};min-width:70px">${escHtml(j.status ?? '?')}</span>
+      <span style="color:var(--muted)">${escHtml(j.mode ?? '')}${step}</span>
+      <span>${escHtml(agents)}</span>
+    </div>`
+  }).join('')
+  // Auto-expand if any jobs
+  document.getElementById('async-jobs-body').style.display = 'block'
 }
 
 function populateAgentInputs(agents) {

@@ -86,7 +86,7 @@ export interface ClientMessage {
       | 'teams_list' | 'teams_create' | 'teams_spawn' | 'teams_task_update'
       | 'teams_message' | 'teams_broadcast' | 'teams_watch' | 'teams_delete'
       | 'thread_launch' | 'thread_list' | 'thread_kill' | 'thread_abort' | 'thread_steer'
-      | 'thread_preset' | 'thread_agents'
+      | 'thread_preset' | 'thread_agents' | 'thread_async_list'
   id?: string
   message?: string
   // PTY fields
@@ -413,6 +413,9 @@ export class PiBuilderGateway {
         case 'thread_agents':
           await this.handleThreadAgents(ws, frame)
           break
+        case 'thread_async_list':
+          await this.handleThreadAsyncList(ws, frame)
+          break
         default:
           this.send(ws, { type: 'error', id: frame.id, message: `Unknown method: ${frame.type}` })
       }
@@ -635,6 +638,32 @@ export class PiBuilderGateway {
     const spec = THREAD_PRESETS[presetName as PresetKey](arg ?? '')
     const command = buildThreadCommand(spec)
     this.send(ws, { type: 'thread_preset_preview', id, preset: presetName, spec, command })
+  }
+
+  private async handleThreadAsyncList(ws: WebSocket, frame: ClientMessage): Promise<void> {
+    try {
+      const { readdir, readFile, stat } = await import('node:fs/promises')
+      const { tmpdir } = await import('node:os')
+      const { join } = await import('node:path')
+
+      const asyncDir = join(tmpdir(), 'pi-async-subagent-runs')
+      const jobs: unknown[] = []
+
+      try {
+        const entries = await readdir(asyncDir)
+        for (const entry of entries) {
+          try {
+            const statusPath = join(asyncDir, entry, 'status.json')
+            const text = await readFile(statusPath, 'utf8')
+            jobs.push(JSON.parse(text))
+          } catch { /* skip */ }
+        }
+      } catch { /* dir missing = no async runs yet */ }
+
+      this.send(ws, { type: 'thread_async_list', id: frame.id, jobs })
+    } catch (err) {
+      this.send(ws, { type: 'error', id: frame.id, message: err instanceof Error ? err.message : String(err) })
+    }
   }
 
   private async handleThreadAgents(ws: WebSocket, frame: ClientMessage): Promise<void> {
