@@ -359,7 +359,11 @@ export class CrushWrapper extends BaseAgentWrapper {
   capabilities = ['code-generation', 'lsp-aware', 'multi-model', 'session-based']
 
   protected buildArgs(task: AgentTask): string[] {
-    return ['run', task.prompt]
+    // --quiet suppresses the interactive spinner so stdout is clean
+    const args = ['run', '--quiet']
+    if (task.workDir) args.push('--cwd', task.workDir)
+    args.push(task.prompt)
+    return args
   }
 }
 
