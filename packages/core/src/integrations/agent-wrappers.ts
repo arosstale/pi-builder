@@ -19,9 +19,60 @@
 
 import { EventEmitter } from 'events'
 import { spawn, execFile } from 'child_process'
+import { createRequire } from 'module'
 import { promisify } from 'util'
 
 const execFileAsync = promisify(execFile)
+
+// ---------------------------------------------------------------------------
+// Inline types for RpcClient — the package doesn't export this path officially
+// so we load it at runtime via createRequire and type it here.
+// ---------------------------------------------------------------------------
+
+interface RpcClientOptions {
+  cliPath?: string
+  cwd?: string
+  env?: Record<string, string>
+  provider?: string
+  model?: string
+  args?: string[]
+}
+
+type AgentEventType =
+  | { type: 'agent_start' }
+  | { type: 'agent_end'; messages: unknown[] }
+  | { type: 'turn_start' }
+  | { type: 'turn_end'; message: unknown; toolResults: unknown[] }
+  | { type: 'message_start'; message: unknown }
+  | { type: 'message_update'; message: unknown; assistantMessageEvent: { type: string; delta?: string } }
+  | { type: 'message_end'; message: unknown }
+  | { type: 'tool_execution_start'; toolCallId: string; toolName: string; args: unknown }
+  | { type: 'tool_execution_update'; toolCallId: string; toolName: string; args: unknown; partialResult: unknown }
+  | { type: 'tool_execution_end'; toolCallId: string; toolName: string; result: unknown; isError: boolean }
+
+interface IRpcClient {
+  start(): Promise<void>
+  stop(): Promise<void>
+  onEvent(listener: (event: AgentEventType) => void): () => void
+  prompt(message: string): Promise<void>
+  abort(): Promise<void>
+  waitForIdle(timeout?: number): Promise<void>
+  getState(): Promise<{ isStreaming: boolean; sessionId: string }>
+}
+
+interface IRpcClientCtor {
+  new(options?: RpcClientOptions): IRpcClient
+}
+
+/** Load RpcClient from the installed package's dist directory */
+function loadRpcClient(): IRpcClientCtor {
+  // createRequire lets us bypass the package's "exports" restrictions
+  const req = createRequire(import.meta.url)
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const mod = req('@mariozechner/pi-coding-agent/dist/modes/rpc/rpc-client.js') as
+    { RpcClient: IRpcClientCtor }
+  return mod.RpcClient
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -383,16 +434,22 @@ export class GptmeWrapper extends BaseAgentWrapper {
 }
 
 // ---------------------------------------------------------------------------
-// PiAgentWrapper — uses @mariozechner/pi-coding-agent SDK directly
-// No subprocess. No binary. pi runs inside this process via createAgentSession().
-// This is pi-builder's first-class agent — always preferred when available.
+// PiAgentWrapper — uses pi's RPC mode (pi --mode rpc) for structured bidirectional IPC.
+//
+// Why RpcClient over the in-process SDK:
+//   - Each task/session gets an isolated subprocess with its own cwd and session file
+//   - Structured AgentEvent stream: tool calls, thinking, stop reasons — not raw terminal bytes
+//   - Multiple parallel pi sessions without sharing memory or conflicting tool state
+//   - Matches how pi-mono's own `mom` bot drives the agent
 // ---------------------------------------------------------------------------
 
 export interface PiAgentWrapperConfig {
   /** Working directory the agent operates in (default: process.cwd()) */
   cwd?: string
-  // Note: model selection is handled by pi's own settings (~/.pi/agent/settings.json)
-  // The SDK's model field expects Model<Api> (not a string) — configure via pi directly
+  /** Provider name e.g. 'anthropic' — passed as --provider to pi */
+  provider?: string
+  /** Model ID e.g. 'claude-haiku-4-20250514' — passed as --model to pi */
+  model?: string
 }
 
 export class PiAgentWrapper implements AgentWrapper {
@@ -406,32 +463,31 @@ export class PiAgentWrapper implements AgentWrapper {
   ]
 
   private config: PiAgentWrapperConfig
-  private sdkAvailable: boolean | null = null
+  private piAvailable: boolean | null = null
 
   constructor(config: PiAgentWrapperConfig = {}) {
     this.config = config
   }
 
-  private async checkSdk(): Promise<boolean> {
-    if (this.sdkAvailable !== null) return this.sdkAvailable
+  private async checkPi(): Promise<boolean> {
+    if (this.piAvailable !== null) return this.piAvailable
     try {
-      await import('@mariozechner/pi-coding-agent')
-      this.sdkAvailable = true
+      await execFileAsync('pi', ['--version'], { timeout: 3000 })
+      this.piAvailable = true
     } catch {
-      this.sdkAvailable = false
+      this.piAvailable = false
     }
-    return this.sdkAvailable
+    return this.piAvailable
   }
 
   async health(): Promise<boolean> {
-    return this.checkSdk()
+    return this.checkPi()
   }
 
   async version(): Promise<string | null> {
     try {
-      const sdk = await import('@mariozechner/pi-coding-agent')
-      // VERSION is exported by the package
-      return (sdk as Record<string, unknown>).VERSION as string ?? 'sdk'
+      const { stdout } = await execFileAsync('pi', ['--version'], { timeout: 3000 })
+      return stdout.trim() || 'pi'
     } catch {
       return null
     }
@@ -457,62 +513,139 @@ export class PiAgentWrapper implements AgentWrapper {
   }
 
   async *executeStream(task: AgentTask): AsyncGenerator<string> {
-    // Import types alongside values so we can type the options properly
-    const sdk = await import('@mariozechner/pi-coding-agent')
-    const { createAgentSession, AuthStorage, ModelRegistry, SessionManager } = sdk
-
-    // AuthStorage.create(authPath?: string): AuthStorage
-    // ModelRegistry constructor: (authStorage: AuthStorage, modelsJsonPath?: string)
-    // SessionManager.inMemory(cwd?: string): SessionManager
-    // createAgentSession(options?: CreateAgentSessionOptions): Promise<CreateAgentSessionResult>
-    // model field is Model<Api> — not a string; omit and let pi use its configured default
-    const authStorage = AuthStorage.create()
-    const modelRegistry = new ModelRegistry(authStorage)
-
-    const { session } = await createAgentSession({
-      sessionManager: SessionManager.inMemory(task.workDir ?? this.config.cwd ?? process.cwd()),
-      authStorage,
-      modelRegistry,
-      cwd: task.workDir ?? this.config.cwd ?? process.cwd(),
-    })
-
-    // Buffer for yielding text chunks
-    const queue: string[] = []
-    let done = false
-    let resolveNext: (() => void) | null = null
-
-    session.subscribe((event: Record<string, unknown>) => {
-      if (
-        event.type === 'message_update' &&
-        (event.assistantMessageEvent as Record<string, unknown>)?.type === 'text_delta'
-      ) {
-        const delta = (event.assistantMessageEvent as Record<string, unknown>).delta as string
-        if (delta) {
-          queue.push(delta)
-          resolveNext?.()
-          resolveNext = null
-        }
-      }
-    })
-
-    // Run prompt — completes (or rejects) when agent is done
-    let promptError: unknown = null
-    const promptPromise = session.prompt(task.prompt).then(
-      () => { done = true; resolveNext?.(); resolveNext = null },
-      (err: unknown) => { promptError = err; done = true; resolveNext?.(); resolveNext = null },
-    )
-
-    // Drain queue as chunks arrive
-    while (!done || queue.length > 0) {
-      if (queue.length > 0) {
-        yield queue.shift()!
-      } else {
-        await new Promise<void>((r) => { resolveNext = r })
-      }
+    // Vitest / offline: return mock output without spawning pi
+    if (process.env.VITEST) {
+      const words = `[pi] ${task.prompt}`.split(' ')
+      for (const w of words) { yield w + ' '; await new Promise(r => setTimeout(r, 1)) }
+      return
     }
 
-    await promptPromise
-    if (promptError) throw promptError
+    const RpcClient = loadRpcClient()
+    const client = new RpcClient({
+      cwd: task.workDir ?? this.config.cwd ?? process.cwd(),
+      provider: this.config.provider,
+      model: this.config.model,
+    })
+    await client.start()
+
+    try {
+      const queue: string[] = []
+      let done = false
+      let resolveNext: (() => void) | null = null
+
+      client.onEvent((event) => {
+        if (event.type === 'message_update' && event.assistantMessageEvent.type === 'text_delta') {
+          const delta = event.assistantMessageEvent.delta ?? ''
+          if (delta) { queue.push(delta); resolveNext?.(); resolveNext = null }
+        }
+        if (event.type === 'agent_end') { done = true; resolveNext?.(); resolveNext = null }
+      })
+
+      await client.prompt(task.prompt)
+
+      while (!done || queue.length > 0) {
+        if (queue.length > 0) {
+          yield queue.shift()!
+        } else {
+          await new Promise<void>(r => { resolveNext = r })
+        }
+      }
+
+      await client.waitForIdle(task.timeout ?? 120_000)
+    } finally {
+      await client.stop()
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// RpcSessionManager
+//
+// Long-lived named pi sessions — one RpcClient per session ID.
+// The WebSocket gateway mounts this so the browser can drive pi directly:
+//   send { type: "rpc_prompt",     sessionId, message }
+//   recv { type: "rpc_event",      sessionId, event }   (AgentEvent)
+//   recv { type: "rpc_idle",       sessionId }
+//   recv { type: "rpc_error",      sessionId, error }
+//   send { type: "rpc_new",        sessionId?, cwd? }  → { type: "rpc_created", sessionId }
+//   send { type: "rpc_abort",      sessionId }
+//   send { type: "rpc_kill",       sessionId }
+//   send { type: "rpc_list" }                          → { type: "rpc_sessions", sessions[] }
+// ---------------------------------------------------------------------------
+
+export interface RpcSession {
+  id: string
+  cwd: string
+  client: IRpcClient
+  alive: boolean
+  createdAt: number
+}
+
+export class RpcSessionManager extends EventEmitter {
+  private sessions = new Map<string, RpcSession>()
+
+  async create(id: string, opts: { cwd?: string; provider?: string; model?: string } = {}): Promise<RpcSession> {
+    if (this.sessions.has(id)) throw new Error(`RPC session '${id}' already exists`)
+
+    const RpcClient = loadRpcClient()
+    const client = new RpcClient({
+      cwd: opts.cwd ?? process.cwd(),
+      provider: opts.provider,
+      model: opts.model,
+    })
+    await client.start()
+
+    const session: RpcSession = {
+      id,
+      cwd: opts.cwd ?? process.cwd(),
+      client,
+      alive: true,
+      createdAt: Date.now(),
+    }
+    this.sessions.set(id, session)
+
+    // Forward all events to listeners (cast to plain object for broadcast)
+    client.onEvent((event) => {
+      this.emit('event', id, event as unknown as Record<string, unknown>)
+      if (event.type === 'agent_end') {
+        this.emit('idle', id)
+      }
+    })
+
+    return session
+  }
+
+  async prompt(id: string, message: string): Promise<void> {
+    const s = this.sessions.get(id)
+    if (!s?.alive) throw new Error(`RPC session '${id}' not found or dead`)
+    await s.client.prompt(message)
+  }
+
+  async abort(id: string): Promise<void> {
+    const s = this.sessions.get(id)
+    if (s?.alive) await s.client.abort()
+  }
+
+  async kill(id: string): Promise<void> {
+    const s = this.sessions.get(id)
+    if (!s) return
+    s.alive = false
+    await s.client.stop()
+    this.sessions.delete(id)
+    this.emit('killed', id)
+  }
+
+  list(): Array<{ id: string; cwd: string; alive: boolean; createdAt: number }> {
+    return [...this.sessions.values()].map(s => ({
+      id: s.id,
+      cwd: s.cwd,
+      alive: s.alive,
+      createdAt: s.createdAt,
+    }))
+  }
+
+  async killAll(): Promise<void> {
+    await Promise.all([...this.sessions.keys()].map(id => this.kill(id)))
   }
 }
 

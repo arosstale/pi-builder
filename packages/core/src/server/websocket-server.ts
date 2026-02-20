@@ -43,6 +43,8 @@ import {
   type TurnResult,
 } from '../orchestration/orchestrator-service'
 import { PtyManager } from './pty-manager'
+import { RpcSessionManager } from '../integrations/agent-wrappers'
+import { AgentTeamsDriver, TEAM_PRESETS, type TeamPreset } from '../teams/agent-teams'
 
 // Resolve the web UI HTML file — look relative to this module, then relative to CWD
 function resolveUiPath(): string {
@@ -78,6 +80,9 @@ export interface GatewayConfig {
 export interface ClientMessage {
   type: 'send' | 'health' | 'agents' | 'history' | 'clear' | 'diff' | 'queue'
       | 'pty_spawn' | 'pty_input' | 'pty_resize' | 'pty_kill' | 'pty_list'
+      | 'rpc_new' | 'rpc_prompt' | 'rpc_abort' | 'rpc_kill' | 'rpc_list'
+      | 'teams_list' | 'teams_create' | 'teams_spawn' | 'teams_task_update'
+      | 'teams_message' | 'teams_broadcast' | 'teams_watch' | 'teams_delete'
   id?: string
   message?: string
   // PTY fields
@@ -106,6 +111,8 @@ export class PiBuilderGateway {
   private orchestrator!: OrchestratorService
   private clients = new Set<WebSocket>()
   private ptyManager = new PtyManager()
+  private rpcSessions = new RpcSessionManager()
+  private teams = new AgentTeamsDriver()
 
   constructor(config: GatewayConfig = {}) {
     this.config = {
@@ -168,7 +175,12 @@ export class PiBuilderGateway {
     }
     try {
       const html = readFileSync(resolveUiPath())
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        // Required for ghostty-web WASM SharedArrayBuffer
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+      })
       res.end(html)
     } catch {
       res.writeHead(503, { 'Content-Type': 'text/plain' })
@@ -208,6 +220,27 @@ export class PiBuilderGateway {
       this.broadcast({ type: 'error', message: err.message })
     })
 
+    // Forward Agent Teams events to all WS clients
+    this.teams.on('team:created', (config) => this.broadcast({ type: 'teams_created', config }))
+    this.teams.on('team:spawned', (teamName) => this.broadcast({ type: 'teams_spawned', teamName }))
+    this.teams.on('team:output', (teamName, text) => this.broadcast({ type: 'teams_output', teamName, text }))
+    this.teams.on('team:exit', (teamName, code) => this.broadcast({ type: 'teams_exit', teamName, code }))
+    this.teams.on('task:created', (teamName, task) => this.broadcast({ type: 'teams_task', teamName, task }))
+    this.teams.on('task:updated', (teamName, task) => this.broadcast({ type: 'teams_task', teamName, task }))
+    this.teams.on('tasks:changed', (teamName, tasks) => this.broadcast({ type: 'teams_tasks', teamName, tasks }))
+    this.teams.on('message:sent', (teamName, msg) => this.broadcast({ type: 'teams_message', teamName, msg }))
+
+    // Forward RPC session events to all WS clients
+    this.rpcSessions.on('event', (sessionId: string, event: Record<string, unknown>) => {
+      this.broadcast({ type: 'rpc_event', sessionId, event })
+    })
+    this.rpcSessions.on('idle', (sessionId: string) => {
+      this.broadcast({ type: 'rpc_idle', sessionId })
+    })
+    this.rpcSessions.on('killed', (sessionId: string) => {
+      this.broadcast({ type: 'rpc_killed', sessionId })
+    })
+
     return new Promise((resolve) => {
       this.httpServer.listen(this.config.port, this.config.host, () => {
         console.log(`🚀 Pi Builder Gateway listening on ws://${this.config.host}:${this.config.port}`)
@@ -217,7 +250,9 @@ export class PiBuilderGateway {
   }
 
   async stop(): Promise<void> {
+    this.teams.stopAll()
     this.ptyManager.killAll()
+    await this.rpcSessions.killAll()
     await this.orchestrator.close()
     await new Promise<void>((resolve, reject) => {
       this.wss.close((err) => (err ? reject(err) : resolve()))
@@ -303,6 +338,45 @@ export class PiBuilderGateway {
           break
         case 'pty_list':
           this.handlePtyList(ws, frame)
+          break
+        case 'rpc_new':
+          await this.handleRpcNew(ws, frame)
+          break
+        case 'rpc_prompt':
+          await this.handleRpcPrompt(ws, frame)
+          break
+        case 'rpc_abort':
+          await this.handleRpcAbort(ws, frame)
+          break
+        case 'rpc_kill':
+          await this.handleRpcKill(ws, frame)
+          break
+        case 'rpc_list':
+          this.handleRpcList(ws, frame)
+          break
+        case 'teams_list':
+          this.handleTeamsList(ws, frame)
+          break
+        case 'teams_create':
+          this.handleTeamsCreate(ws, frame)
+          break
+        case 'teams_spawn':
+          this.handleTeamsSpawn(ws, frame)
+          break
+        case 'teams_task_update':
+          this.handleTeamsTaskUpdate(ws, frame)
+          break
+        case 'teams_message':
+          this.handleTeamsMessage(ws, frame)
+          break
+        case 'teams_broadcast':
+          this.handleTeamsBroadcast(ws, frame)
+          break
+        case 'teams_watch':
+          this.handleTeamsWatch(ws, frame)
+          break
+        case 'teams_delete':
+          this.handleTeamsDelete(ws, frame)
           break
         default:
           this.send(ws, { type: 'error', id: frame.id, message: `Unknown method: ${frame.type}` })
@@ -415,6 +489,160 @@ export class PiBuilderGateway {
       rows: s.rows,
     }))
     this.send(ws, { type: 'pty_list', id: frame.id, sessions })
+  }
+
+  // ---------------------------------------------------------------------------
+  // RPC session handlers
+  // ---------------------------------------------------------------------------
+
+  private async handleRpcNew(ws: WebSocket, frame: ClientMessage): Promise<void> {
+    const sessionId = frame.sessionId ?? `rpc-${Date.now()}`
+    try {
+      await this.rpcSessions.create(sessionId, {
+        cwd: frame.cwd ?? this.config.orchestrator?.workDir ?? process.cwd(),
+      })
+      this.send(ws, { type: 'rpc_created', id: frame.id, sessionId })
+    } catch (err) {
+      this.send(ws, { type: 'error', id: frame.id, message: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  private async handleRpcPrompt(ws: WebSocket, frame: ClientMessage): Promise<void> {
+    const { sessionId, message, id } = frame
+    if (!sessionId || !message) {
+      this.send(ws, { type: 'error', id, message: 'rpc_prompt requires sessionId and message' })
+      return
+    }
+    try {
+      await this.rpcSessions.prompt(sessionId, message)
+      this.send(ws, { type: 'ok', id, method: 'rpc_prompt' })
+    } catch (err) {
+      this.send(ws, { type: 'error', id, message: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  private async handleRpcAbort(ws: WebSocket, frame: ClientMessage): Promise<void> {
+    const { sessionId, id } = frame
+    if (!sessionId) { this.send(ws, { type: 'error', id, message: 'sessionId required' }); return }
+    await this.rpcSessions.abort(sessionId)
+    this.send(ws, { type: 'ok', id, method: 'rpc_abort' })
+  }
+
+  private async handleRpcKill(ws: WebSocket, frame: ClientMessage): Promise<void> {
+    const { sessionId, id } = frame
+    if (!sessionId) { this.send(ws, { type: 'error', id, message: 'sessionId required' }); return }
+    await this.rpcSessions.kill(sessionId)
+    this.send(ws, { type: 'ok', id, method: 'rpc_kill' })
+  }
+
+  private handleRpcList(ws: WebSocket, frame: ClientMessage): void {
+    this.send(ws, { type: 'rpc_sessions', id: frame.id, sessions: this.rpcSessions.list() })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Agent Teams handlers
+  // ---------------------------------------------------------------------------
+
+  private handleTeamsList(ws: WebSocket, frame: ClientMessage): void {
+    const states = this.teams.getAllTeamStates()
+    const presets = Object.entries(TEAM_PRESETS).map(([key, p]) => ({
+      preset: key,
+      description: p.description,
+      defaultName: p.defaultName,
+      memberCount: p.members.length,
+    }))
+    this.send(ws, { type: 'teams_list', id: frame.id, teams: states, presets })
+  }
+
+  private handleTeamsCreate(ws: WebSocket, frame: ClientMessage): void {
+    const { id } = frame
+    const preset = (frame as unknown as Record<string, string>).preset as TeamPreset | undefined
+    const teamName = (frame as unknown as Record<string, string>).teamName
+    const members = (frame as unknown as Record<string, unknown>).members as Array<{ name: string; agentType: string }> | undefined
+
+    try {
+      let config
+      if (preset && preset !== 'custom') {
+        config = this.teams.createTeamFromPreset(preset, teamName)
+      } else if (members?.length) {
+        config = this.teams.createTeam(teamName ?? `team-${Date.now()}`, members.map(m => ({
+          name: m.name,
+          agentId: require('crypto').randomUUID(),
+          agentType: m.agentType as import('../teams/agent-teams').AgentType,
+        })))
+      } else {
+        this.send(ws, { type: 'error', id, message: 'teams_create requires preset or members' })
+        return
+      }
+      this.teams.watch(config.teamName)
+      this.send(ws, { type: 'teams_created', id, config })
+    } catch (err) {
+      this.send(ws, { type: 'error', id, message: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  private handleTeamsSpawn(ws: WebSocket, frame: ClientMessage): void {
+    const f = frame as unknown as Record<string, string>
+    const { id, teamName } = f
+    if (!teamName) { this.send(ws, { type: 'error', id, message: 'teamName required' }); return }
+    const prompt = f.prompt ?? `You are team lead for ${teamName}. Coordinate your teammates.`
+    const cwd = f.cwd ?? this.config.orchestrator?.workDir ?? process.cwd()
+    this.teams.spawnTeam(teamName, prompt, {
+      cwd,
+      teammateMode: (f.teammateMode as 'in-process' | 'tmux' | 'auto') ?? 'in-process',
+    })
+    this.teams.watch(teamName)
+    this.send(ws, { type: 'ok', id, method: 'teams_spawn' })
+  }
+
+  private handleTeamsTaskUpdate(ws: WebSocket, frame: ClientMessage): void {
+    const f = frame as unknown as Record<string, unknown>
+    const { id } = frame
+    const teamName = f.teamName as string
+    const taskId = f.taskId as string
+    const updates = f.updates as Record<string, unknown>
+    if (!teamName || !taskId) { this.send(ws, { type: 'error', id, message: 'teamName and taskId required' }); return }
+    const task = this.teams.updateTask(teamName, taskId, updates)
+    if (!task) { this.send(ws, { type: 'error', id, message: `Task ${taskId} not found in ${teamName}` }); return }
+    this.send(ws, { type: 'ok', id, method: 'teams_task_update' })
+  }
+
+  private handleTeamsMessage(ws: WebSocket, frame: ClientMessage): void {
+    const f = frame as unknown as Record<string, string>
+    const { id, teamName } = f
+    if (!teamName || !f.from || !f.to || !f.content) {
+      this.send(ws, { type: 'error', id, message: 'teamName, from, to, content required' })
+      return
+    }
+    this.teams.sendMessage(teamName, {
+      type: 'message', from: f.from, to: f.to, content: f.content, summary: f.summary,
+    })
+    this.send(ws, { type: 'ok', id, method: 'teams_message' })
+  }
+
+  private handleTeamsBroadcast(ws: WebSocket, frame: ClientMessage): void {
+    const f = frame as unknown as Record<string, string>
+    const { id, teamName } = f
+    if (!teamName || !f.from || !f.content) {
+      this.send(ws, { type: 'error', id, message: 'teamName, from, content required' })
+      return
+    }
+    this.teams.broadcast(teamName, f.from, f.content, f.summary)
+    this.send(ws, { type: 'ok', id, method: 'teams_broadcast' })
+  }
+
+  private handleTeamsWatch(ws: WebSocket, frame: ClientMessage): void {
+    const f = frame as unknown as Record<string, string>
+    if (!f.teamName) { this.send(ws, { type: 'error', id: frame.id, message: 'teamName required' }); return }
+    this.teams.watch(f.teamName)
+    this.send(ws, { type: 'ok', id: frame.id, method: 'teams_watch' })
+  }
+
+  private handleTeamsDelete(ws: WebSocket, frame: ClientMessage): void {
+    const f = frame as unknown as Record<string, string>
+    if (!f.teamName) { this.send(ws, { type: 'error', id: frame.id, message: 'teamName required' }); return }
+    this.teams.deleteTeam(f.teamName)
+    this.send(ws, { type: 'ok', id: frame.id, method: 'teams_delete' })
   }
 
   // ---------------------------------------------------------------------------

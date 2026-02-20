@@ -8,10 +8,10 @@
  */
 
 import { invoke } from '@tauri-apps/api/core'
-import { open } from '@tauri-apps/plugin-shell'
 import { useCallback, useRef, useState } from 'react'
 import { TerminalPane } from './TerminalPane'
 import { usePty, type PtySessionInfo } from './usePty'
+import { useWorktrees } from './useWorktrees'
 
 const AGENT_PRESETS: Record<string, string[]> = {
   pi:     ['pi', '--no-color'],
@@ -26,6 +26,7 @@ export default function App() {
   const [agentInput, setAgentInput] = useState('pi')
   const [activeSession, setActiveSession] = useState<string | null>(null)
   const { sessions, spawn, writeInput, resize, kill } = usePty()
+  const worktrees = useWorktrees(repoPath || null)
 
   // Map sessionId → write() fn provided by TerminalPane on mount
   const writers = useRef<Map<string, (data: string) => void>>(new Map())
@@ -126,6 +127,16 @@ export default function App() {
               }}
             />
           ))}
+
+          {/* Worktree divergence */}
+          {worktrees.length > 0 && (
+            <>
+              <div style={{ ...styles.sidebarTitle, marginTop: 8 }}>Worktrees</div>
+              {worktrees.map(wt => (
+                <WorktreeRow key={wt.name} wt={wt} />
+              ))}
+            </>
+          )}
         </div>
 
         {/* Terminal area */}
@@ -159,6 +170,39 @@ export default function App() {
             ))
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function WorktreeRow({ wt }: { wt: import('./useWorktrees').WorktreeInfo }) {
+  return (
+    <div style={{
+      padding: '6px 16px',
+      fontSize: 11,
+      fontFamily: "'JetBrains Mono', monospace",
+      color: '#8b949e',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 2,
+      borderBottom: '1px solid #21262d',
+    }}>
+      <span style={{ color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {wt.branch}
+      </span>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {wt.ahead > 0 && (
+          <span style={{ color: '#3fb950' }}>↑{wt.ahead}</span>
+        )}
+        {wt.behind > 0 && (
+          <span style={{ color: '#f85149' }}>↓{wt.behind}</span>
+        )}
+        {wt.dirty && (
+          <span style={{ color: '#d29922' }}>●</span>
+        )}
+        {!wt.ahead && !wt.behind && !wt.dirty && (
+          <span style={{ color: '#3fb950' }}>✓ clean</span>
+        )}
       </div>
     </div>
   )
