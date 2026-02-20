@@ -40,18 +40,39 @@ npx tsx apps/cli/src/cli.ts run "refactor this file to use async/await"
 ## Architecture
 
 ```
-apps/
-  cli/src/cli.ts              — start | agents | run commands
-  web/pi-builder-ui.html      — self-contained chat UI (no build step)
+┌─────────────┐
+│   Web UI    │  apps/web/pi-builder-ui.html (single-file, no build)
+│  (Browser)  │
+└──────┬──────┘
+       │ WebSocket (port 18900)
+       ↓
+┌────────────────────────────────────────────────┐
+│  PiBuilderGateway  (packages/core/src/server/) │
+│  ├─ HTTP (serves web UI at GET /)              │
+│  ├─ WebSocket server                           │
+│  └─ OrchestratorService + EventEmitter stream  │
+└──────┬─────────────────────────────────────────┘
+       ↓
+┌────────────────────────────────────────────────┐
+│  WrapperOrchestrator  (src/integrations/)      │
+│  ├─ Health check (30s TTL via --version)       │
+│  ├─ Capability-based routing                   │
+│  ├─ Message queue (drain after each turn)      │
+│  ├─ Fallback (try next on failure)             │
+│  └─ SQLite session persistence                 │
+└──────┬─────────────────────────────────────────┘
+       ↓
+  [claude|aider|opencode|codex|gemini|goose|plandex|swe-agent|crush|gptme]
 
-packages/core/src/
-  integrations/agent-wrappers.ts    — 10 real CLI agent wrappers + WrapperOrchestrator
-  orchestration/orchestrator-service.ts  — routes messages, persists to SQLite, EventEmitter
-  server/websocket-server.ts        — WS gateway (port 18900), serves orchestrator events
-  db/database.ts                    — SQLite via bun:sqlite / better-sqlite3
-  code-generator.ts                 — direct Claude API calls (Anthropic or OpenRouter)
-  integrations/pi-agent-sdk.ts      — @mariozechner/pi-coding-agent SDK wrapper
-  integrations/pi-mono.ts           — pi CLI subprocess wrapper
+Key files:
+  apps/cli/src/cli.ts                         — start | agents | run
+  packages/core/src/integrations/
+    agent-wrappers.ts                         — 10 CLI wrappers + WrapperOrchestrator
+    pi-agent-sdk.ts                           — pi SDK in-process (no subprocess)
+  packages/core/src/orchestration/
+    orchestrator-service.ts                   — middleware, routing, history, queue
+  packages/core/src/server/websocket-server.ts — WS gateway
+  packages/core/src/db/database.ts            — SQLite (bun:sqlite / in-memory shim)
 ```
 
 ---
@@ -107,7 +128,7 @@ Connect to `ws://127.0.0.1:18900`.
 
 ```bash
 npx vitest run packages/core
-# 40 files, 993 pass
+# 40 files, 1000 pass
 ```
 
 ---
