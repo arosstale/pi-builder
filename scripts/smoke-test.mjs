@@ -1,8 +1,10 @@
 /**
  * End-to-end smoke test: connects to gateway, lists agents, sends a prompt.
  * Usage: node scripts/smoke-test.mjs [port] [prompt]
+ *
+ * Uses globalThis.WebSocket (Node 22+) with ws fallback for older runtimes.
  */
-import { WebSocket } from 'ws'
+const WS = globalThis.WebSocket ?? (await import('ws')).WebSocket
 
 const port = parseInt(process.argv[2] ?? '18911', 10)
 const prompt = process.argv[3] ?? '@pi What is 2+2? Answer in one word only.'
@@ -10,16 +12,17 @@ const prompt = process.argv[3] ?? '@pi What is 2+2? Answer in one word only.'
 console.log(`Connecting to ws://127.0.0.1:${port} ...`)
 console.log(`Prompt: ${prompt}\n`)
 
-const ws = new WebSocket(`ws://127.0.0.1:${port}`)
+const ws = new WS(`ws://127.0.0.1:${port}`)
 let gotAgents = false
 
-ws.on('open', () => {
+ws.addEventListener('open', () => {
   console.log('✅ Connected')
   ws.send(JSON.stringify({ type: 'agents', id: 'init' }))
 })
 
-ws.on('message', (data) => {
-  const msg = JSON.parse(data.toString())
+ws.addEventListener('message', (event) => {
+  const data = typeof event.data === 'string' ? event.data : event.data.toString()
+  const msg = JSON.parse(data)
 
   switch (msg.type) {
     case 'hello':
@@ -61,8 +64,8 @@ ws.on('message', (data) => {
   }
 })
 
-ws.on('error', (e) => { console.error('WS error:', e.message); process.exit(1) })
-ws.on('close', () => { console.log('Connection closed') })
+ws.addEventListener('error', (e) => { console.error('WS error:', e.message ?? e); process.exit(1) })
+ws.addEventListener('close', () => { console.log('Connection closed') })
 
 setTimeout(() => {
   console.error('\n⏰ Timeout after 120s')
