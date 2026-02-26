@@ -83,6 +83,8 @@ export interface TurnResult {
 //   'error'         → Error
 // ---------------------------------------------------------------------------
 
+export type GatewayMode = 'execute' | 'plan'
+
 export class OrchestratorService extends EventEmitter {
   private config: OrchestratorConfig
   private wrapperOrchestrator: WrapperOrchestrator
@@ -91,6 +93,9 @@ export class OrchestratorService extends EventEmitter {
   private sessionId: string
   private isExecuting = false
   private middleware: MiddlewareFn[] = []
+
+  /** Current gateway mode: 'execute' (default) or 'plan' (discuss-only) */
+  mode: GatewayMode = 'execute'
 
   // Message queue — holds messages received while agent is executing
   private messageQueue: Array<{ message: string; resolve: (r: TurnResult) => void; reject: (e: Error) => void }> = []
@@ -494,6 +499,14 @@ export class OrchestratorService extends EventEmitter {
 
   private buildPrompt(userMessage: string): string {
     const parts: string[] = []
+
+    if (this.mode === 'plan') {
+      parts.push(
+        'PLANNING MODE — discuss the approach, architecture, and tradeoffs only. ' +
+        'Do NOT execute tools, write files, run commands, or make any changes. ' +
+        'Respond with analysis, suggestions, and a concrete plan the user can approve.\n',
+      )
+    }
 
     if (this.config.systemPrompt) {
       parts.push(`System context:\n${this.config.systemPrompt}\n`)

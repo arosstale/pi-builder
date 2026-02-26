@@ -276,6 +276,15 @@
   #send-btn:hover { opacity: 0.85; }
   #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  .mode-btn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    padding: 3px 10px; border-radius: 4px; font-size: 12px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .mode-btn:hover { border-color: var(--accent); color: var(--text); }
+  .mode-btn.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+  .mode-btn.plan-active { background: #d29922; color: #000; border-color: #d29922; }
+
   /* ── Status bar ── */
   #status-bar {
     padding: 3px 20px;
@@ -1058,12 +1067,27 @@
 </div>
 
 <footer>
+  <div id="mode-bar" style="display:flex;gap:4px;margin-bottom:4px;">
+    <button id="mode-execute" class="mode-btn active" onclick="setMode('execute')" title="Execute mode — agent writes code and runs commands">⚡ Execute</button>
+    <button id="mode-plan" class="mode-btn" onclick="setMode('plan')" title="Planning mode — discuss approach without making changes">📋 Plan</button>
+    <button id="preview-btn" class="mode-btn" onclick="togglePreview()" title="Toggle live preview pane" style="margin-left:auto;">👁 Preview</button>
+  </div>
   <textarea id="input-box" rows="1" placeholder="Ask anything about your codebase…" disabled></textarea>
   <div id="send-wrap">
     <button id="send-btn" disabled>Send</button>
     <span id="queue-badge">0</span>
   </div>
 </footer>
+
+<!-- Live Preview Panel (hidden by default) -->
+<div id="preview-panel" style="display:none;position:fixed;right:0;top:40px;bottom:28px;width:45%;background:var(--surface);border-left:1px solid var(--border);z-index:100;">
+  <div style="display:flex;align-items:center;padding:6px 10px;border-bottom:1px solid var(--border);gap:8px;">
+    <span style="font-weight:600;font-size:13px;">Live Preview</span>
+    <input id="preview-url" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:4px;font-size:12px;" placeholder="http://localhost:3000" onchange="loadPreview(this.value)">
+    <button onclick="togglePreview()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;">✕</button>
+  </div>
+  <iframe id="preview-iframe" style="width:100%;height:calc(100% - 36px);border:none;background:#fff;" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+</div>
 
 <div id="status-bar">not connected</div>
 
@@ -1215,6 +1239,18 @@ function handleFrame(f) {
       break
 
     case 'ok':
+      break
+
+    case 'mode':
+      if (f.mode) setMode(f.mode)
+      break
+
+    case 'preview':
+      if (f.url) {
+        document.getElementById('preview-url').value = f.url
+        if (!previewOpen) togglePreview()
+        document.getElementById('preview-iframe').src = f.url
+      }
       break
 
     // Thread frames
@@ -1537,6 +1573,42 @@ function sendMessage() {
   // If an agent is pinned, prepend @agentid (middleware handles routing)
   const message = pinnedAgent ? `@${pinnedAgent} ${text}` : text
   send({ type: 'send', id: `msg-${Date.now()}`, message })
+}
+
+// ── Mode toggle (Execute / Plan) ───────────────────────────────────────────
+let currentMode = 'execute'
+
+window.setMode = function(mode) {
+  currentMode = mode
+  send({ type: 'mode', id: `mode-${Date.now()}`, mode })
+
+  document.getElementById('mode-execute').className = 'mode-btn' + (mode === 'execute' ? ' active' : '')
+  document.getElementById('mode-plan').className = 'mode-btn' + (mode === 'plan' ? ' plan-active' : '')
+
+  const input = document.getElementById('input-box')
+  input.placeholder = mode === 'plan'
+    ? '📋 Planning mode — describe what you want to build…'
+    : 'Ask anything about your codebase…'
+}
+
+// ── Live Preview ───────────────────────────────────────────────────────────
+let previewOpen = false
+
+window.togglePreview = function() {
+  previewOpen = !previewOpen
+  const panel = document.getElementById('preview-panel')
+  panel.style.display = previewOpen ? 'block' : 'none'
+
+  // Shrink main content when preview is open
+  document.querySelector('main').style.marginRight = previewOpen ? '45%' : '0'
+  document.querySelector('footer').style.marginRight = previewOpen ? '45%' : '0'
+}
+
+window.loadPreview = function(url) {
+  if (!url) return
+  const iframe = document.getElementById('preview-iframe')
+  iframe.src = url
+  send({ type: 'preview', id: `preview-${Date.now()}`, url })
 }
 
 // ── UI helpers ─────────────────────────────────────────────────────────────

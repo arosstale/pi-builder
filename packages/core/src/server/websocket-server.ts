@@ -81,6 +81,7 @@ export interface GatewayConfig {
 
 export interface ClientMessage {
   type: 'send' | 'health' | 'agents' | 'history' | 'clear' | 'diff' | 'diff_full' | 'queue'
+      | 'mode' | 'preview'
       | 'pty_spawn' | 'pty_input' | 'pty_resize' | 'pty_kill' | 'pty_list'
       | 'rpc_new' | 'rpc_prompt' | 'rpc_abort' | 'rpc_kill' | 'rpc_list'
       | 'teams_list' | 'teams_create' | 'teams_spawn' | 'teams_task_update'
@@ -89,6 +90,10 @@ export interface ClientMessage {
       | 'thread_preset' | 'thread_agents' | 'thread_async_list'
   id?: string
   message?: string
+  // Mode fields
+  mode?: 'execute' | 'plan'
+  // Preview fields
+  url?: string
   // PTY fields
   sessionId?: string
   agentId?: string
@@ -377,6 +382,12 @@ export class PiBuilderGateway {
           break
         case 'queue':
           this.handleQueue(ws, frame)
+          break
+        case 'mode':
+          this.handleMode(ws, frame)
+          break
+        case 'preview':
+          this.handlePreview(ws, frame)
           break
         case 'pty_spawn':
           await this.handlePtySpawn(ws, frame)
@@ -878,6 +889,35 @@ export class PiBuilderGateway {
   private handleQueue(ws: WebSocket, frame: ClientMessage): void {
     const queue = this.orchestrator.getQueue()
     this.send(ws, { type: 'queue', id: frame.id, queue })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Mode: switch between execute (default) and plan (discuss-only)
+  // ---------------------------------------------------------------------------
+
+  private handleMode(ws: WebSocket, frame: ClientMessage): void {
+    const newMode = frame.mode
+    if (newMode !== 'execute' && newMode !== 'plan') {
+      this.send(ws, { type: 'error', id: frame.id, message: 'mode must be "execute" or "plan"' })
+      return
+    }
+    this.orchestrator.mode = newMode
+    this.broadcast({ type: 'mode', mode: newMode })
+    this.send(ws, { type: 'ok', id: frame.id, method: 'mode', mode: newMode })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Preview: proxy a local dev server URL for iframe embedding
+  // ---------------------------------------------------------------------------
+
+  private handlePreview(ws: WebSocket, frame: ClientMessage): void {
+    const url = frame.url ?? frame.message
+    if (!url) {
+      this.send(ws, { type: 'error', id: frame.id, message: 'preview requires a url' })
+      return
+    }
+    // Broadcast the preview URL to all clients — the UI renders it in an iframe
+    this.broadcast({ type: 'preview', id: frame.id, url })
   }
 
   private async getGitDiff(full = false): Promise<string | null> {
