@@ -25,6 +25,20 @@ import { promisify } from 'util'
 const execFileAsync = promisify(execFile)
 
 // ---------------------------------------------------------------------------
+// Windows .cmd shim resolution
+// On Windows, npm-installed binaries are .cmd shims. child_process.spawn and
+// execFile require either the .cmd extension or shell:true. We add shell:true
+// on Windows for known npm binaries to avoid ENOENT/EINVAL errors.
+// ---------------------------------------------------------------------------
+
+const IS_WIN = process.platform === 'win32'
+
+/** Spawn options that work on Windows for npm .cmd shims */
+function winSpawnOpts(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return IS_WIN ? { ...extra, shell: true } : extra
+}
+
+// ---------------------------------------------------------------------------
 // Inline types for RpcClient — the package doesn't export this path officially
 // so we load it at runtime via createRequire and type it here.
 // ---------------------------------------------------------------------------
@@ -134,6 +148,7 @@ export abstract class BaseAgentWrapper extends EventEmitter implements AgentWrap
         cwd: task.workDir ?? process.cwd(),
         env: { ...process.env, ...task.env },
         stdio: ['pipe', 'pipe', 'pipe'],
+        ...winSpawnOpts(),
       })
 
       const timer = setTimeout(() => {
@@ -196,6 +211,7 @@ export abstract class BaseAgentWrapper extends EventEmitter implements AgentWrap
       cwd: task.workDir ?? process.cwd(),
       env: { ...process.env, ...task.env },
       stdio: ['pipe', 'pipe', 'pipe'],
+      ...winSpawnOpts(),
     })
 
     const timer = setTimeout(() => proc.kill('SIGTERM'), timeout)
@@ -230,7 +246,10 @@ export abstract class BaseAgentWrapper extends EventEmitter implements AgentWrap
 
   async version(): Promise<string | null> {
     try {
-      const { stdout } = await execFileAsync(this.binary, ['--version'], { timeout: 3000 })
+      const opts = IS_WIN
+        ? { timeout: 3000, shell: true as const }
+        : { timeout: 3000 }
+      const { stdout } = await execFileAsync(this.binary, ['--version'], opts)
       return stdout.trim()
     } catch {
       return null
@@ -326,7 +345,7 @@ export class GeminiCLIWrapper extends BaseAgentWrapper {
   // Strategy: kill after 2s, resolve with whatever stdout we collected by then.
   async version(): Promise<string | null> {
     return new Promise((resolve) => {
-      const proc = spawn(this.binary, ['--version'], { stdio: 'pipe' })
+      const proc = spawn(this.binary, ['--version'], { stdio: 'pipe', ...winSpawnOpts() })
       let out = ''
       let settled = false
 
@@ -472,7 +491,10 @@ export class PiAgentWrapper implements AgentWrapper {
   private async checkPi(): Promise<boolean> {
     if (this.piAvailable !== null) return this.piAvailable
     try {
-      await execFileAsync('pi', ['--version'], { timeout: 3000 })
+      // pi --version opens a TUI and writes to /dev/tty, not stdout/stderr,
+      // so execFileAsync hangs. Use `where` (Windows) / `which` (unix) instead.
+      const cmd = IS_WIN ? 'where' : 'which'
+      await execFileAsync(cmd, ['pi'], { timeout: 3000 })
       this.piAvailable = true
     } catch {
       this.piAvailable = false
@@ -485,12 +507,9 @@ export class PiAgentWrapper implements AgentWrapper {
   }
 
   async version(): Promise<string | null> {
-    try {
-      const { stdout } = await execFileAsync('pi', ['--version'], { timeout: 3000 })
-      return stdout.trim() || 'pi'
-    } catch {
-      return null
-    }
+    // pi --version writes to TTY, not pipes. Return a static marker
+    // if pi is on PATH — the actual version isn't needed for routing.
+    return (await this.checkPi()) ? 'pi' : null
   }
 
   async execute(task: AgentTask): Promise<AgentResult> {
