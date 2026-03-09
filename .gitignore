@@ -11,6 +11,16 @@ build/
 out/
 *.tsbuildinfo
 
+# TypeScript build artifacts (run tsc locally, don't commit)
+apps/cli/src/*.js
+apps/cli/src/*.js.map
+apps/cli/src/*.d.ts
+apps/cli/src/*.d.ts.map
+packages/core/__tests__/*.js
+packages/core/__tests__/*.js.map
+packages/core/__tests__/*.d.ts
+packages/core/__tests__/*.d.ts.map
+
 # IDE
 .vscode/
 .idea/

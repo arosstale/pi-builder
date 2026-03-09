@@ -12,35 +12,36 @@ Thanks for your interest in contributing! Pi Builder is open-source and welcomes
 
 1. Fork the repository
 2. Clone your fork: `git clone https://github.com/yourusername/pi-builder.git`
-3. Install dependencies: `npm install`
+3. Install dependencies: `bun install`
 4. Create a feature branch: `git checkout -b feat/your-feature`
 
 ## Development Workflow
 
 ```bash
-# Build all packages
-npm run build:packages
+# Start the gateway
+bun run start
 
 # Run tests
-npm test
+npx vitest run packages/core
 
-# Run specific platform dev
-npm run dev:web
-npm run dev:cli
-npm run dev:desktop
+# Typecheck
+bun run typecheck
 
 # Lint and fix
-npm run lint:fix
-npm run typecheck
+bun run lint:fix
+
+# Pre-push gate (Mitsuhiko's rule)
+bash scripts/reflect.sh
 ```
 
 ## Pull Request Process
 
 1. **Keep it focused**: One feature per PR
-2. **Test your changes**: Run `npm test` before submitting
-3. **Follow the style guide**: Use `npm run lint:fix` for formatting
-4. **Write clear commit messages**: Describe the _what_ and _why_
-5. **Reference issues**: Link to related issues when applicable
+2. **Test your changes**: Run `npx vitest run packages/core` before submitting
+3. **Run the pre-push gate**: `bash scripts/reflect.sh`
+4. **Follow the style guide**: 2-space indent, single quotes, no semicolons
+5. **Write clear commit messages**: Describe the _what_ and _why_
+6. **Reference issues**: Link to related issues when applicable
 
 ## Commit Message Format
 
@@ -64,10 +65,10 @@ footer (optional)
 
 **Example:**
 ```
-feat(cli): add generate command
+feat(gateway): add RPC session persistence
 
-Implement AI-powered code generation via CLI
-using Claude API integration.
+Store RPC session state in SQLite so sessions
+survive gateway restarts.
 
 Closes #123
 ```
@@ -75,19 +76,16 @@ Closes #123
 ## Testing
 
 - Write tests for new features
-- Ensure all tests pass: `npm test`
-- Aim for >80% coverage
+- Run `npx vitest run packages/core` — never `bun test`
+- Ensure all tests pass before opening a PR
 
-## Documentation
+## Code Style
 
-- Update README.md for user-facing changes
-- Update inline code comments for complex logic
-- Add TypeScript comments for public APIs
+- TypeScript strict mode. No `any`.
+- 2-space indent, single quotes, no semicolons, 100 char line width
+- ESM (`"type": "module"`). Named exports only.
+- Stage explicitly: `git add path/to/file.ts` — never `git add -A`
 
 ## License
 
 By contributing, you agree that your contributions will be licensed under the MIT License.
-
----
-
-Questions? Open an issue or ask in our Discord community.

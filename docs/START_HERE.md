@@ -25,26 +25,22 @@ bun run smoke
 
 ```
 packages/core/src/
-  integrations/agent-wrappers.ts        10 CLI wrappers + WrapperOrchestrator
+  integrations/agent-wrappers.ts        11 CLI wrappers + WrapperOrchestrator + RpcSessionManager
   orchestration/orchestrator-service.ts routing, history, SQLite, EventEmitter
   server/websocket-server.ts            WS gateway + HTTP server (serves UI)
+  server/pty-manager.ts                 node-pty PTY sessions
+  teams/agent-teams.ts                  Agent Teams filesystem driver
   db/database.ts                        SQLite (bun:sqlite / better-sqlite3 fallback)
-  integrations/pi-agent-sdk.ts          @mariozechner/pi-coding-agent SDK wrapper
 
 apps/
   cli/src/cli.ts                        start | agents | run
-  web/pi-builder-ui.html                browser chat UI (no build step)
+  web/pi-builder-ui.html                browser chat UI (4 tabs, no build step)
   desktop/src/main.ts                   Electron app (spawns gateway subprocess)
+  desktop-tauri/                        Tauri app (Rust PTY + git2 worktrees)
 ```
 
 ## Tests
 
 ```bash
-npx vitest run packages/core   # 40 files, 993 pass
+npx vitest run packages/core   # 41 files, 1030 pass, 3 skipped
 ```
-
-## What's in progress
-
-- Optional WS auth (`authToken` in `GatewayConfig`) — Copilot PR #6
-- Electron build CI — Copilot PR #7
-- pi-mono contributions (#1533, #1487) — branches ready, posting Feb 23
