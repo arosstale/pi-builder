@@ -11,12 +11,13 @@
     "dist": "tsc && electron-builder",
     "typecheck": "tsc --noEmit"
   },
+  "author": "Artale",
   "dependencies": {
-    "@pi-builder/core": "workspace:*",
-    "electron": "^27.0.0"
+    "@pi-builder/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "electron": "^27.0.0",
     "electron-builder": "^24.0.0",
     "typescript": "^5.4.0"
   },
