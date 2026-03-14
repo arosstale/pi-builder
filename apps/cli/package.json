@@ -1,0 +1,27 @@
+{
+  "name": "@pi-builder/cli",
+  "version": "0.1.0",
+  "description": "CLI tool for Pi Builder",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "pi-builder": "./dist/cli.js"
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@pi-builder/core": "workspace:*",
+    "@pi-builder/types": "workspace:*",
+    "@pi-builder/utils": "workspace:*",
+    "commander": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.4.0"
+  }
+}

@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pi Builder</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface-hover: #21262d;
+      --border: #30363d;
+      --accent: #58a6ff;
+      --text-primary: #c9d1d9;
+      --text-secondary: #8b949e;
+      --success: #3fb950;
+      --error: #f85149;
+      --warn: #d29922;
+      --radius: 6px;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+      --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Layout */
+    .app-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 250px;
+      background-color: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.3s ease;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .sidebar.open { transform: translateX(0); }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .agent-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .agent-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background-color 0.2s;
+      color: var(--text-primary);
+      text-decoration: none;
+      font-size: 13px;
+      font-family: var(--font-mono);
+      margin-bottom: 2px;
+    }
+
+    .agent-item:hover {
+      background-color: var(--surface-hover);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--border);
+      flex-shrink: 0;
+    }
+    .status-dot.ok { background-color: var(--success); box-shadow: 0 0 4px rgba(63, 185, 80, 0.4); }
+    .status-dot.fail { background-color: var(--error); }
+
+    /* Main Content */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      background-color: var(--bg);
+      width: 100%;
+    }
+
+    /* Header */
+    .header {
+      height: 50px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      background-color: var(--surface);
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .logo {
+      font-weight: bold;
+      font-size: 16px;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .logo span { color: var(--accent); }
+
+    .connection-pill {
+      font-size: 11px;
+      padding: 2px 10px;
+      border-radius: 12px;
+      background-color: var(--bg);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 24px;
+      font-weight: 500;
+    }
+    .connection-pill.connected { color: var(--success); border-color: rgba(63, 185, 80, 0.3); background-color: rgba(63, 185, 80, 0.1); }
+    .connection-pill.connecting { color: var(--warn); border-color: rgba(210, 153, 34, 0.3); animation: pulse 1.5s infinite; }
+    .connection-pill.disconnected { color: var(--error); border-color: rgba(248, 81, 73, 0.3); }
+
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+
+    .ws-input {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-secondary);
+      padding: 4px 8px;
+      border-radius: var(--radius);
+      font-size: 11px;
+      font-family: var(--font-mono);
+      width: 180px;
+      text-align: right;
+      transition: all 0.2s;
+    }
+    .ws-input:hover, .ws-input:focus {
+      border-color: var(--border);
+      background-color: var(--bg);
+      outline: none;
+      color: var(--text-primary);
+    }
+
+    .spacer { flex: 1; }
+
+    .mobile-menu-btn {
+      display: none;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    /* Chat Area */
+    .chat-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      scroll-behavior: smooth;
+    }
+
+    .message {
+      display: flex;
+      flex-direction: column;
+      max-width: 850px;
+      width: 100%;
+      position: relative;
+    }
+    .message.user { align-self: flex-end; align-items: flex-end; }
+    .message.agent { align-self: flex-start; align-items: flex-start; }
+
+    .message-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+    }
+
+    .agent-badge {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      background-color: var(--surface-hover);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .message-bubble {
+      background-color: var(--surface);
+      border: 1px solid var(--border);
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text-primary);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .message.user .message-bubble {
+      background-color: #1c2128;
+      border-color: #30363d;
+    }
+
+    .spinner {
+      width: 10px;
+      height: 10px;
+      border: 2px solid var(--text-secondary);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+      margin-left: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Input Area */
+    .input-area {
+      padding: 20px;
+      border-top: 1px solid var(--border);
+      background-color: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      gap: 10px;
+    }
+
+    textarea {
+      flex: 1;
+      background-color: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.5;
+      resize: none;
+      min-height: 48px;
+      max-height: 200px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    .send-btn {
+      background-color: var(--success);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 0 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .send-btn:hover { opacity: 0.9; }
+    .send-btn:disabled { opacity: 0.5; cursor: not-allowed; background-color: var(--surface-hover); color: var(--text-secondary); }
+
+    .status-bar {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 16px;
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 6px;
+      height: 14px;
+      background-color: var(--accent);
+      vertical-align: middle;
+      animation: blink 1s step-end infinite;
+      margin-left: 1px;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    /* Mobile Responsive */
+    @media (max-width: 768px) {
+      .sidebar {
+        position: absolute;
+        height: 100%;
+        transform: translateX(-100%);
+        box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+      }
+      .sidebar.open { transform: translateX(0); }
+      .mobile-menu-btn { display: block; }
+      .header { padding: 0 12px; gap: 10px; }
+      .ws-input { width: 120px; }
+      .chat-area { padding: 12px; }
+      .logo span { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">Installed Agents</div>
+      <div class="agent-list" id="agent-list">
+        <!-- Agents will be injected here -->
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Header -->
+      <header class="header">
+        <button class="mobile-menu-btn" id="menu-btn">☰</button>
+        <div class="logo">pi<span>-builder</span></div>
+        <div class="spacer"></div>
+        <div class="connection-pill disconnected" id="connection-status">
+          <div class="status-dot"></div>
+          <span id="connection-text">Disconnected</span>
+        </div>
+        <input type="text" class="ws-input" id="ws-url" placeholder="ws://localhost:18900">
+      </header>
+
+      <!-- Chat -->
+      <div class="chat-area" id="chat-area">
+        <div class="message agent">
+          <div class="message-bubble" style="color: var(--text-secondary);">
+            Welcome to Pi Builder. Connect to a gateway to start routing prompts to your local agents.
+          </div>
+        </div>
+      </div>
+
+      <!-- Input -->
+      <div class="input-area">
+        <div class="input-wrapper">
+          <textarea id="message-input" placeholder="Ask anything... (Enter to send, Shift+Enter for new line)" rows="1"></textarea>
+          <button id="send-btn" class="send-btn" disabled>→</button>
+        </div>
+        <div class="status-bar" id="status-bar-container">
+          <span id="agent-status">Ready</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ── State ────────────────────────────────────────────────────────────────
+    let ws = null;
+    let reconnectDelay = 1000;
+    const MAX_RECONNECT_DELAY = 30000;
+    let reconnectTimer = null;
+    let agentHealth = {};
+    let knownAgents = [];
+    let isConnected = false;
+    let msgSeq = 0;
+    let currentStream = null; // { id, el, textContent }
+
+    // ── DOM Elements ────────────────────────────────────────────────────────
+    const els = {
+      wsInput: document.getElementById('ws-url'),
+      statusPill: document.getElementById('connection-status'),
+      statusText: document.getElementById('connection-text'),
+      statusDot: document.querySelector('#connection-status .status-dot'),
+      agentList: document.getElementById('agent-list'),
+      chatArea: document.getElementById('chat-area'),
+      input: document.getElementById('message-input'),
+      sendBtn: document.getElementById('send-btn'),
+      agentStatus: document.getElementById('agent-status'),
+      menuBtn: document.getElementById('menu-btn'),
+      sidebar: document.getElementById('sidebar'),
+    };
+
+    // ── Config ──────────────────────────────────────────────────────────────
+    const AGENT_COLORS = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#a371f7', '#db6d28'];
+
+    function getAgentColor(name) {
+      if (!name) return AGENT_COLORS[0];
+      let hash = 0;
+      for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+      return AGENT_COLORS[Math.abs(hash) % AGENT_COLORS.length];
+    }
+
+    // ── Initialization ──────────────────────────────────────────────────────
+    (function init() {
+      // Auto-derive URL
+      if (!els.wsInput.value) {
+        if (location.protocol === 'http:' || location.protocol === 'https:') {
+          const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+          els.wsInput.value = `${proto}://${location.host}`;
+        } else {
+          els.wsInput.value = 'ws://127.0.0.1:18900';
+        }
+      }
+
+      connect();
+
+      // Event Listeners
+      els.menuBtn.onclick = () => els.sidebar.classList.toggle('open');
+      els.wsInput.onchange = () => { if (ws) ws.close(); connect(); };
+
+      els.input.onkeydown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      };
+
+      els.input.oninput = function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+      };
+
+      els.sendBtn.onclick = sendMessage;
+
+      // Click outside sidebar on mobile
+      document.addEventListener('click', (e) => {
+        if (window.innerWidth <= 768 && els.sidebar.classList.contains('open') &&
+            !els.sidebar.contains(e.target) && !els.menuBtn.contains(e.target)) {
+          els.sidebar.classList.remove('open');
+        }
+      });
+    })();
+
+    // ── WebSocket Logic ─────────────────────────────────────────────────────
+    function connect() {
+      if (ws) {
+        try { ws.close(); } catch(e){}
+      }
+
+      const url = els.wsInput.value;
+      updateConnectionStatus('connecting');
+
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        updateConnectionStatus('connected');
+        reconnectDelay = 1000;
+        isConnected = true;
+        els.input.focus();
+        // Request initial state
+        send({ type: 'agents', id: 'init-agents' });
+        send({ type: 'health', id: 'init-health' });
+      };
+
+      ws.onclose = () => {
+        updateConnectionStatus('disconnected');
+        isConnected = false;
+        ws = null;
+        scheduleReconnect();
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+
+      ws.onmessage = (ev) => {
+        try {
+          const frame = JSON.parse(ev.data);
+          handleFrame(frame);
+        } catch (e) {
+          console.warn('Invalid JSON:', ev.data);
+        }
+      };
+    }
+
+    function scheduleReconnect() {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => {
+        console.log(`Reconnecting in ${reconnectDelay}ms...`);
+        connect();
+        reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+      }, reconnectDelay);
+    }
+
+    function updateConnectionStatus(status) {
+      els.statusPill.className = `connection-pill ${status}`;
+      els.statusText.textContent = status === 'connected' ? 'Connected' :
+                                   status === 'connecting' ? 'Connecting...' : 'Disconnected';
+
+      const isOk = status === 'connected';
+      els.input.disabled = !isOk;
+      els.sendBtn.disabled = !isOk;
+      if (status === 'connecting') els.statusDot.className = 'status-dot connecting';
+      else if (status === 'connected') els.statusDot.className = 'status-dot ok';
+      else els.statusDot.className = 'status-dot fail';
+    }
+
+    function send(msg) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(msg));
+      }
+    }
+
+    // ── Protocol Handling ───────────────────────────────────────────────────
+    function handleFrame(f) {
+      switch (f.type) {
+        case 'hello':
+          els.agentStatus.textContent = `Session: ${f.sessionId}`;
+          break;
+        case 'agents':
+          knownAgents = f.list || [];
+          renderAgents();
+          break;
+        case 'health':
+          agentHealth = f.agents || {};
+          renderAgents();
+          break;
+        case 'agent_start':
+          startStream(f.agent, f.task);
+          break;
+        case 'chunk':
+          appendChunk(f.agent, f.text);
+          break;
+        case 'turn_complete':
+          endStream(f.message);
+          break;
+        case 'agent_end':
+          endStream({ durationMs: f.durationMs, agentUsed: f.agent });
+          break;
+        case 'error':
+          addSystemMessage(f.message, 'error');
+          if (currentStream) endStream();
+          break;
+      }
+    }
+
+    // ── UI Rendering ────────────────────────────────────────────────────────
+    function renderAgents() {
+      if (!knownAgents.length) {
+        els.agentList.innerHTML = '<div style="padding:10px;color:var(--text-secondary);font-size:12px">No agents found</div>';
+        return;
+      }
+
+      els.agentList.innerHTML = knownAgents.map(a => {
+        const isOk = agentHealth[a.id];
+        const color = getAgentColor(a.name || a.id);
+        return `
+          <div class="agent-item" onclick="selectAgent('${a.id}')">
+            <div class="status-dot ${isOk ? 'ok' : 'fail'}"></div>
+            <span style="flex:1">${esc(a.name || a.id)}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectAgent(id) {
+      // Force route logic: Prepend @agent to input
+      const prefix = `@${id} `;
+      if (!els.input.value.startsWith('@')) {
+        els.input.value = prefix + els.input.value;
+      } else {
+        // Replace existing
+        els.input.value = els.input.value.replace(/^@[^\s]+ /, prefix);
+      }
+      els.input.focus();
+
+      // Mobile: close sidebar
+      if (window.innerWidth <= 768) els.sidebar.classList.remove('open');
+    }
+
+    function addSystemMessage(text, type = 'info') {
+      const div = document.createElement('div');
+      div.className = 'message agent';
+      div.innerHTML = `<div class="message-bubble" style="color:var(--${type === 'error' ? 'error' : 'text-secondary'})">${esc(text)}</div>`;
+      els.chatArea.appendChild(div);
+      scrollToBottom();
+    }
+
+    function addUserMessage(text) {
+      const div = document.createElement('div');
+      div.className = 'message user';
+      div.innerHTML = `
+        <div class="message-header">You</div>
+        <div class="message-bubble">${esc(text)}</div>
+      `;
+      els.chatArea.appendChild(div);
+      scrollToBottom();
+    }
+
+    function startStream(agent, task) {
+      const id = ++msgSeq;
+      const color = getAgentColor(agent);
+
+      const div = document.createElement('div');
+      div.className = 'message agent';
+      div.id = `msg-${id}`;
+      div.innerHTML = `
+        <div class="message-header">
+          <span class="agent-badge" style="color:${color};border-color:${color}44;background-color:${color}11">
+            ${esc(agent)}
+          </span>
+          <span class="spinner" id="spinner-${id}"></span>
+        </div>
+        <div class="message-bubble" id="bubble-${id}"></div>
+      `;
+
+      els.chatArea.appendChild(div);
+
+      currentStream = {
+        id,
+        el: document.getElementById(`bubble-${id}`),
+        spinner: document.getElementById(`spinner-${id}`),
+        startTime: Date.now()
+      };
+
+      els.agentStatus.textContent = `${agent} is working...`;
+      scrollToBottom();
+    }
+
+    function appendChunk(agent, text) {
+      if (!currentStream) {
+        // Recover if we missed start? Or just ignore
+        startStream(agent, '');
+      }
+
+      // Simple text append with cursor
+      // Remove existing cursor if any
+      const cursor = currentStream.el.querySelector('.cursor');
+      if (cursor) cursor.remove();
+
+      const span = document.createElement('span');
+      span.textContent = text;
+      currentStream.el.appendChild(span);
+
+      // Add cursor back
+      const newCursor = document.createElement('span');
+      newCursor.className = 'cursor';
+      currentStream.el.appendChild(newCursor);
+
+      scrollToBottom();
+    }
+
+    function endStream(meta) {
+      if (!currentStream) return;
+
+      // Remove cursor
+      const cursor = currentStream.el.querySelector('.cursor');
+      if (cursor) cursor.remove();
+
+      // Remove spinner
+      if (currentStream.spinner) currentStream.spinner.remove();
+
+      const duration = meta?.durationMs || (Date.now() - currentStream.startTime);
+      const agent = meta?.agentUsed || 'Agent';
+
+      // Update status line
+      els.agentStatus.textContent = `${agent} · ${(duration/1000).toFixed(1)}s`;
+
+      currentStream = null;
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+    function sendMessage() {
+      const text = els.input.value.trim();
+      if (!text || !isConnected) return;
+
+      addUserMessage(text);
+      send({ type: 'send', id: `msg-${Date.now()}`, message: text });
+
+      els.input.value = '';
+      els.input.style.height = 'auto';
+    }
+
+    function scrollToBottom() {
+      els.chatArea.scrollTop = els.chatArea.scrollHeight;
+    }
+
+    function esc(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>

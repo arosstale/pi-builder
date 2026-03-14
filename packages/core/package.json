@@ -1,0 +1,46 @@
+{
+  "name": "@pi-builder/core",
+  "version": "0.1.0",
+  "description": "Core engine for Pi Builder",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./server": {
+      "import": "./dist/server/index.js",
+      "types": "./dist/server/index.d.ts"
+    },
+    "./integrations": {
+      "import": "./dist/integrations/index.js",
+      "types": "./dist/integrations/index.d.ts"
+    }
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "^0.53.0",
+    "@pi-builder/types": "workspace:*",
+    "@pi-builder/utils": "workspace:*",
+    "@types/ws": "^8.18.1",
+    "better-sqlite3": "^12.6.2",
+    "express": "^4.21.0",
+    "node-fetch": "^3.0.0",
+    "ws": "^8.19.0"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^0.39.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "typescript": "^5.4.0",
+    "vitest": "^1.4.0"
+  }
+}
