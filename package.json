@@ -1,0 +1,12 @@
+{
+  "name": "@artale/pi-builder",
+  "version": "1.0.0",
+  "description": "Extension builder for Pi. Scaffold, build, test, and publish Pi extensions from a single command. The tool that built 82 packages.",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "author": "artale",
+  "repository": { "type": "git", "url": "https://github.com/arosstale/pi-builder.git" },
+  "files": ["src/extension.ts"],
+  "pi": { "extensions": ["src/extension.ts"] },
+  "peerDependencies": { "@mariozechner/pi-coding-agent": "*" }
+}
